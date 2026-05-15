@@ -15,6 +15,7 @@ path = "src/main.rs"
 ravn-core.workspace = true
 ravn-embeddings.workspace = true
 ravn-llm.workspace = true
+ravn-mcp.workspace = true
 ravn-memory.workspace = true
 ravn-persistence.workspace = true
 ravn-tools.workspace = true

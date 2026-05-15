@@ -80,6 +80,20 @@ async fn main() -> anyhow::Result<()> {
 
     let mut registry = ToolRegistry::new();
     native::register_defaults(&mut registry, data_dir.clone(), Some(embedder.clone()));
+
+    // Load configured MCP servers (Phase 2.1/2.2). The returned
+    // connections own the subprocesses — keep them alive for the
+    // program lifetime; dropping closes them.
+    let mcp_config_path = data_dir.join("mcp-servers.toml");
+    let _mcp_connections =
+        match ravn_mcp::connect_and_register(&mcp_config_path, &mut registry).await {
+            Ok(conns) => conns,
+            Err(e) => {
+                tracing::warn!(error = %e, "mcp config load failed; continuing without MCP servers");
+                Vec::new()
+            }
+        };
+
     let tools = Arc::new(registry);
 
     let agent = Arc::new(

@@ -3,6 +3,7 @@ members = [
     "crates/core",
     "crates/embeddings",
     "crates/llm",
+    "crates/mcp",
     "crates/memory",
     "crates/persistence",
     "crates/tools",
@@ -60,10 +61,15 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 # --- HTTP ---
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "charset", "http2"] }
 
+# --- MCP ---
+rmcp = { version = "1", features = ["client", "transport-child-process"] }
+toml = "0.8"
+
 # --- Internal workspace crates ---
 ravn-core = { path = "crates/core" }
 ravn-embeddings = { path = "crates/embeddings" }
 ravn-llm = { path = "crates/llm" }
+ravn-mcp = { path = "crates/mcp" }
 ravn-memory = { path = "crates/memory" }
 ravn-persistence = { path = "crates/persistence" }
 ravn-tools = { path = "crates/tools" }
