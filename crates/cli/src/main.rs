@@ -2,6 +2,7 @@
 
 mod app;
 mod approver;
+mod input;
 mod runner;
 mod ui;
 
@@ -75,7 +76,9 @@ async fn main() -> anyhow::Result<()> {
     let tools = Arc::new(registry);
 
     let agent = Arc::new(Agent::new(provider, tools, approver, db.clone()));
-    let agent_config = AgentConfig::new(model.clone());
+    //let agent_config = AgentConfig::new(model.clone());
+    let mut agent_config = AgentConfig::new(model.clone());
+    agent_config.budget.max_steps = 2;
 
     let app = App::new(
         db.clone(),
@@ -245,12 +248,40 @@ fn handle_key(
         return;
     }
 
-    match key.code {
-        KeyCode::Char(ch) if !app.streaming_active => app.input.push(ch),
-        KeyCode::Backspace if !app.streaming_active => {
-            app.input.pop();
+    if app.streaming_active {
+        // While streaming, ignore text-editing keys — Esc/Ctrl-C above
+        // are the only valid inputs.
+        return;
+    }
+
+    // Readline-style cursor controls.
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        match key.code {
+            KeyCode::Char('a') => {
+                app.input.cursor_home();
+                return;
+            }
+            KeyCode::Char('e') => {
+                app.input.cursor_end();
+                return;
+            }
+            KeyCode::Char('u') => {
+                app.input.clear();
+                return;
+            }
+            _ => {}
         }
-        KeyCode::Enter if !app.streaming_active => {
+    }
+
+    match key.code {
+        KeyCode::Left => app.input.cursor_left(),
+        KeyCode::Right => app.input.cursor_right(),
+        KeyCode::Home => app.input.cursor_home(),
+        KeyCode::End => app.input.cursor_end(),
+        KeyCode::Delete => app.input.delete_forward(),
+        KeyCode::Char(ch) => app.input.insert_char(ch),
+        KeyCode::Backspace => app.input.backspace(),
+        KeyCode::Enter => {
             if let Some(user_msg) = app.push_user_input() {
                 app.last_error = None;
                 app.streaming_active = true;

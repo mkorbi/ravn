@@ -8,6 +8,7 @@ use ravn_tools::Permission;
 use tokio_util::sync::CancellationToken;
 
 use crate::approver::ApprovalRequest;
+use crate::input::InputBuffer;
 
 #[derive(Debug, Clone)]
 pub struct DisplayedMessage {
@@ -51,7 +52,7 @@ pub struct App {
 
     /// What gets rendered in the scrollback pane.
     pub messages: Vec<DisplayedMessage>,
-    pub input: String,
+    pub input: InputBuffer,
     pub streaming_buffer: String,
     pub streaming_active: bool,
     pub pending_approval: Option<ApprovalRequest>,
@@ -85,7 +86,7 @@ impl App {
             semantic,
             system_prompt,
             messages: Vec::new(),
-            input: String::new(),
+            input: InputBuffer::new(),
             streaming_buffer: String::new(),
             streaming_active: false,
             pending_approval: None,
@@ -113,7 +114,7 @@ impl App {
     }
 
     pub fn push_user_input(&mut self) -> Option<Message> {
-        let text = std::mem::take(&mut self.input);
+        let text = self.input.take();
         let trimmed = text.trim();
         if trimmed.is_empty() {
             return None;
@@ -297,3 +298,4 @@ impl From<Role> for DisplayRole {
         }
     }
 }
+

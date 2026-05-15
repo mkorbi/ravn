@@ -111,17 +111,29 @@ fn render_input(frame: &mut Frame<'_>, area: Rect, app: &App) {
     } else {
         "> "
     };
-    let mut spans = vec![Span::styled(
-        prompt,
-        Style::default().fg(Color::DarkGray),
-    )];
-    spans.push(Span::raw(&app.input));
-    spans.push(Span::styled(
-        "_",
-        Style::default()
-            .fg(Color::Yellow)
-            .add_modifier(Modifier::SLOW_BLINK),
-    ));
+
+    let cursor_byte = app.input.cursor.min(app.input.text.len());
+    let (before, rest) = app.input.text.split_at(cursor_byte);
+    let (cursor_ch, after) = match rest.chars().next() {
+        Some(ch) => {
+            let len = ch.len_utf8();
+            (ch.to_string(), &rest[len..])
+        }
+        None => (" ".to_string(), rest),
+    };
+
+    let cursor_style = Style::default()
+        .bg(Color::Yellow)
+        .fg(Color::Black)
+        .add_modifier(Modifier::BOLD);
+
+    let spans = vec![
+        Span::styled(prompt, Style::default().fg(Color::DarkGray)),
+        Span::raw(before.to_string()),
+        Span::styled(cursor_ch, cursor_style),
+        Span::raw(after.to_string()),
+    ];
+
     let para =
         Paragraph::new(Line::from(spans)).block(Block::default().borders(Borders::ALL));
     frame.render_widget(para, area);
