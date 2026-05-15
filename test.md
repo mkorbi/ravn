@@ -109,7 +109,7 @@ sqlite3 ~/Library/Application\ Support/ravn/state.db \
 ```
 
 Pass-Kriterien:
-- [ ] Output enthält den String `<tool_result trustworthy="false">` und `</tool_result>` als Wrapper um den web_fetch-Output
+- [X] Output enthält den String `<tool_result trustworthy="false">` und `</tool_result>` als Wrapper um den web_fetch-Output
 
 ---
 
@@ -165,9 +165,9 @@ sqlite3 -header -column \
 ```
 
 Pass-Kriterien:
-- [ ] 1) mind. eine Row mit nicht-null `model` und `cost_usd > 0`
-- [ ] 2) mind. ein Wert `msg_count > 2` (User + Assistant + ggf. Tool-Result-User)
-- [ ] 3) Liste enthält mindestens `react.done`, `react.tool.start`, `react.tool.end`
+- [X] 1) mind. eine Row mit nicht-null `model` und `cost_usd > 0`
+- [X] 2) mind. ein Wert `msg_count > 2` (User + Assistant + ggf. Tool-Result-User)
+- [X] 3) Liste enthält mindestens `react.done`, `react.tool.start`, `react.tool.end`
 
 ---
 
@@ -222,7 +222,16 @@ echo "Max prefers German for explanations." > "$HOME/Library/Application Support
 
 ### Block O — Budget-Cap
 
-Konkretere Anleitung. Wir suchen in `crates/cli/src/main.rs` **Zeile 78**:
+Vorher: `max_steps=2` triggerte nicht, weil das Modell alle drei
+shell-Calls in **einen** Assistant-Turn gebatcht hat (Iteration 1:
+LLM emittiert 3× tool_use → wir invoken alle 3; Iteration 2: LLM
+fasst zusammen → keine tool_uses → ReAct terminiert). Nur 2
+Iterationen, also `2 > 2 = false` → kein Abbruch.
+
+Fix: `max_steps = 1`. Dann läuft genau **ein** Tool, beim nächsten
+LLM-Call trippt der Cap garantiert.
+
+In `crates/cli/src/main.rs` **Zeile 78**:
 
 ```rust
     let agent_config = AgentConfig::new(model.clone());
@@ -232,16 +241,16 @@ Diese eine Zeile ersetzt du temporär durch **zwei** Zeilen:
 
 ```rust
     let mut agent_config = AgentConfig::new(model.clone());
-    agent_config.budget.max_steps = 2;
+    agent_config.budget.max_steps = 1;
 ```
 
-(Also: `let` → `let mut`, und eine Zeile drunter den `max_steps` setzen.)
+(Also: `let` → `let mut`, und eine Zeile drunter `max_steps = 1` setzen.)
 
 Verifikation des Edits im zweiten Terminal:
 ```bash
 grep -n "agent_config\.budget" ~/ravn/crates/cli/src/main.rs
 ```
-Du solltest `agent_config.budget.max_steps = 2;` sehen.
+Du solltest `agent_config.budget.max_steps = 1;` sehen.
 
 Dann build + run + test:
 ```bash
@@ -249,16 +258,20 @@ cd ~/ravn
 cargo run --release -p ravn-cli
 ```
 
-In der TUI:
+In der TUI eine einfache Eingabe, die genau **einen** Tool-Call triggert:
 ```
-Run "ls /" then "ls /tmp" then "ls /etc" — each via the shell tool.
+Run "echo hello" via shell
 ```
+
+Erwarteter Ablauf:
+- Step 1 (= ReAct-Iteration 1): LLM emittiert `tool_use shell` → Approval-Modal → `y` → shell läuft
+- Step 2 (= ReAct-Iteration 2): vor dem nächsten LLM-Call trippt der Cap
 
 Pass-Kriterien:
 - [ ] Modal kommt für den ersten `shell`-Call → `y`
-- [ ] (Optional) zweiter Modal → `y`
-- [ ] Loop bricht ab mit `error: budget exceeded: max_steps` im Scrollback,
-  bevor das dritte Tool laufen kann
+- [ ] `  ✓ shell: exit=0` Zeile erscheint (Tool ist gelaufen)
+- [ ] Direkt danach Loop bricht ab mit `error: budget exceeded: max_steps` im Scrollback
+- [ ] Statuszeile zeigt nach Abbruch keine weitere Token-Erhöhung
 
 Aufräumen danach (im zweiten Terminal):
 ```bash
