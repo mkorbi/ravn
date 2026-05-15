@@ -1,0 +1,19 @@
+[package]
+name = "ravn-embeddings"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+tokio.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+# Qwen3-Embedding-0.6B via candle backend (D12).
+fastembed = { version = "5", features = ["qwen3", "hf-hub"] }
+candle-core = "0.10"
+parking_lot = "0.12"
