@@ -6,6 +6,7 @@
 //! Migrations live in `crates/persistence/migrations/` and are embedded at
 //! compile time via `sqlx::migrate!`.
 
+pub mod allowlist;
 pub mod db;
 pub mod error;
 pub mod events;
@@ -120,6 +121,28 @@ mod tests {
 
         let hits = messages::search(&db, "rust", 10).await.unwrap();
         assert_eq!(hits.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn allowlist_insert_then_list() {
+        let db = db().await;
+        allowlist::insert(&db, "shell").await.unwrap();
+        allowlist::insert(&db, "file_write").await.unwrap();
+        let names = allowlist::list_all(&db).await.unwrap();
+        assert_eq!(names.len(), 2);
+        assert!(names.contains(&"shell".to_string()));
+        assert!(allowlist::contains(&db, "shell").await.unwrap());
+        assert!(!allowlist::contains(&db, "datetime").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn allowlist_insert_idempotent_then_remove() {
+        let db = db().await;
+        allowlist::insert(&db, "shell").await.unwrap();
+        allowlist::insert(&db, "shell").await.unwrap();
+        assert_eq!(allowlist::list_all(&db).await.unwrap().len(), 1);
+        allowlist::remove(&db, "shell").await.unwrap();
+        assert!(!allowlist::contains(&db, "shell").await.unwrap());
     }
 
     #[tokio::test]

@@ -69,7 +69,8 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let (event_tx, event_rx) = mpsc::channel::<AppEvent>(256);
-    let approver = Arc::new(TuiApprover::new(event_tx.clone()));
+    let approver = Arc::new(TuiApprover::new(db.clone(), event_tx.clone()));
+    approver.preload().await;
 
     let mut registry = ToolRegistry::new();
     native::register_defaults(&mut registry, data_dir.clone());
