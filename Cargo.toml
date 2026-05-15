@@ -53,6 +53,10 @@ crossterm = { version = "0.28", features = ["event-stream"] }
 
 # --- IDs / time ---
 uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+
+# --- HTTP ---
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "charset", "http2"] }
 
 # --- Internal workspace crates ---
 ravn-core = { path = "crates/core" }

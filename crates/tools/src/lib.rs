@@ -10,12 +10,16 @@
 //! und den `Approver` (D7: Inline-Modal in der TUI).
 
 pub mod context;
+pub mod native;
 pub mod registry;
 pub mod tool;
 
 pub use context::{AllowAll, Approver, ApprovalDecision, DenyAll, ToolContext};
 pub use registry::ToolRegistry;
 pub use tool::{Permission, Tool, ToolError, ToolOutput};
+
+#[cfg(test)]
+mod native_tests;
 
 #[cfg(test)]
 mod tests {
