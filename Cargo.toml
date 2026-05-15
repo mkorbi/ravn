@@ -3,6 +3,7 @@ members = [
     "crates/core",
     "crates/llm",
     "crates/persistence",
+    "crates/tools",
     "crates/cli",
 ]
 resolver = "2"
@@ -56,6 +57,7 @@ uuid = { version = "1", features = ["v4"] }
 ravn-core = { path = "crates/core" }
 ravn-llm = { path = "crates/llm" }
 ravn-persistence = { path = "crates/persistence" }
+ravn-tools = { path = "crates/tools" }
 
 [profile.dev]
 opt-level = 0

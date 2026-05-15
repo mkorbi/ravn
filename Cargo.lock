@@ -1904,6 +1904,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ravn-tools"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "ravn-llm",
+ "ravn-persistence",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
