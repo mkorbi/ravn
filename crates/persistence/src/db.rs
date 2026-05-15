@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
@@ -12,13 +12,18 @@ static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 #[derive(Clone)]
 pub struct Db {
     pub(crate) pool: SqlitePool,
+    /// Canonical path on disk — `:memory:` for the in-memory variant.
+    /// Used by [`crate::vector`] to open separate `rusqlite` connections
+    /// for the `sqlite-vec`-backed `vec0` tables.
+    pub(crate) path: PathBuf,
 }
 
 impl Db {
-    /// Open (or create) the database at `path`, set WAL+pragmas, and run
-    /// pending migrations.
+    /// Open (or create) the database at `path`, set WAL+pragmas, run
+    /// pending sqlx migrations, and bootstrap the `sqlite-vec` `vec0`
+    /// tables ([`crate::vector`]).
     pub async fn open(path: impl AsRef<Path>) -> Result<Self, Error> {
-        let path = path.as_ref();
+        let path = path.as_ref().to_path_buf();
         let url = path
             .to_str()
             .ok_or_else(|| Error::InvalidPath(path.display().to_string()))?;
@@ -37,10 +42,15 @@ impl Db {
 
         MIGRATOR.run(&pool).await?;
 
-        Ok(Self { pool })
+        let db = Self { pool, path };
+        crate::vector::bootstrap(&db).await?;
+        Ok(db)
     }
 
-    /// Open an in-memory database (for tests).
+    /// Open an in-memory database (for tests). Vector operations are
+    /// **not** supported here — rusqlite can't share the same in-memory
+    /// SQLite instance as sqlx. Use a tempfile path with [`open`] for
+    /// tests that need `vec0`.
     pub async fn open_in_memory() -> Result<Self, Error> {
         let opts = SqliteConnectOptions::from_str("sqlite::memory:")?
             .journal_mode(SqliteJournalMode::Memory)
@@ -53,12 +63,19 @@ impl Db {
 
         MIGRATOR.run(&pool).await?;
 
-        Ok(Self { pool })
+        Ok(Self {
+            pool,
+            path: PathBuf::from(":memory:"),
+        })
     }
 
     /// Underlying connection pool, for callers that need raw `sqlx` access.
     pub fn pool(&self) -> &SqlitePool {
         &self.pool
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 
     pub async fn close(self) {

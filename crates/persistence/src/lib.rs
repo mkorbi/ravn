@@ -12,6 +12,7 @@ pub mod error;
 pub mod events;
 pub mod messages;
 pub mod sessions;
+pub mod vector;
 
 pub use db::{now_millis, Db};
 pub use error::Error;
