@@ -1871,7 +1871,14 @@ dependencies = [
 name = "ravn-core"
 version = "0.0.1"
 dependencies = [
+ "async-stream",
  "async-trait",
+ "futures",
+ "ravn-llm",
+ "ravn-memory",
+ "ravn-persistence",
+ "ravn-tools",
+ "schemars 0.8.22",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
