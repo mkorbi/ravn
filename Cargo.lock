@@ -2015,13 +2015,16 @@ name = "ravn-cli"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "async-trait",
  "crossterm",
  "dirs",
  "futures",
  "ratatui",
  "ravn-core",
  "ravn-llm",
+ "ravn-memory",
  "ravn-persistence",
+ "ravn-tools",
  "serde_json",
  "tokio",
  "tokio-util",

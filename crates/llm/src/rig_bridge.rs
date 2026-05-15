@@ -69,12 +69,20 @@ pub fn to_rig_message(m: Message) -> Result<RigMessage, Error> {
                         tool_use_id,
                         content,
                         is_error,
-                        trustworthy: _,
+                        trustworthy,
                     } => {
-                        let body = if is_error {
-                            format!("[error] {content}")
-                        } else {
-                            content
+                        // Phase 1.10: wrap outputs from untrusted sources
+                        // (web_fetch, untrusted files, MCP servers of unknown
+                        // origin) so the model is hinted to treat the contents
+                        // as data, not instructions. Internal-error strings
+                        // (our denial / wrapper messages) keep the un-wrapped
+                        // form — they're trustworthy by construction.
+                        let body = match (is_error, trustworthy) {
+                            (true, _) => format!("[error] {content}"),
+                            (false, true) => content,
+                            (false, false) => format!(
+                                "<tool_result trustworthy=\"false\">\n{content}\n</tool_result>"
+                            ),
                         };
                         items.push(RigUserContent::ToolResult(ToolResult {
                             id: tool_use_id,
