@@ -23,6 +23,10 @@
 | D4 | Desktop-UI | **`ratatui` ab Phase 0 + `tauri` 2.0 parallel ab Phase 4** | TUI bleibt Dev-Werkzeug und Power-User-Interface. Tauri-App ab Multi-Channel-Phase für End-User-Demos. UI teilt sich Gateway/WebSocket-Backend (Phase 2+). |
 | D5 | Lokale Inferenz | **Erst ab Phase 3** | `mistral.rs` 0.7.x kommt mit Reasoning-Router (Phase 3.1). Phase 0–2: Cloud-only (Anthropic+OpenAI). |
 | D6 | MSRV | **Rust 1.91+ pinnen** | `rust-version = "1.91"` im Workspace. Begründung: transitiv via aws-smithy bei `lancedb` ≥0.20 (auch wenn lancedb nicht initialer Default ist, lassen wir den Pfad offen). |
+| D7 | Approval-UX (Phase 1) | **Inline-Modal y/n/a im TUI** | Bei Write/Exec-Tool pausiert der Loop, Overlay zeigt Tool-Name+Args. `y`=ja-diesmal, `n`=nein, `a`=Allowlist-Pattern fuer kuenftige Auto-Allow. `Esc` cancelt den Run. |
+| D8 | Memory-Crate (Phase 1) | **Neuer `crates/memory`** | Eigener Crate fuer Working/Episodic/Semantic/Procedural Memory (project.md §1.4). Phase 1 implementiert nur Semantic (Markdown-Files); Episodic kommt in Phase 2. |
+| D9 | Web-Tools (Phase 1) | **`web_fetch` only** | reqwest + HTML-to-Markdown fuer URL→Markdown, kein externer API-Key noetig. `web_search` verschiebt sich auf Phase 2 (ggf. via MCP-Server statt nativer Implementation). |
+| D10 | Cache-Tracking (Phase 1) | **`hit_rate` in Statuszeile** | `hit_rate = cache_read / (input + cache_read + cache_creation)` als 4. Wert in der TUI-Statusbar. PLAN.md Trigger `<60%` loest Warnung aus. |
 
 ---
 
@@ -56,26 +60,169 @@
 
 **Goal**: Lauffähiger ReAct-Agent mit nativen Tools, Markdown-Memory, Approval-Gate für Writes/Exec, sauberer Cancellation.
 
-**Abhängigkeit**: Phase 0 abgeschlossen.
+**Abhängigkeit**: Phase 0 abgeschlossen. Decisions [D7–D10] geklärt.
 
-### Tasks
-- [ ] **1.1** `core::loop` ReAct-Implementation (thought → action → observation) mit Hard-Cap 50 Steps + Token-Budget.
-- [ ] **1.2** `core::budget` (Step/Token/Cost-Limits) + `tokio::sync::CancellationToken` durch gesamten Loop.
-- [ ] **1.3** `tools`-Crate mit `Tool`-Trait inkl. `permission(): Read|Write|Exec` (project.md §1.11).
-- [ ] **1.4** Native Tools: `file_read`, `file_write`, `shell` (mit Approval), `web_search`, `web_fetch`, `session_search`, `memory_save`, `datetime`.
-- [ ] **1.5** Tool-Schemas via `schemars` ableiten, an LLM-Provider serialisieren (OpenAI/Anthropic-Format).
-- [ ] **1.6** Memory-Loader: `~/.ravn/{soul.md,memory.md,user.md}` ins System-Prompt einbinden (Cache-stabile Position).
+### Tasks (Ausfuehrungs-Reihenfolge)
+- [ ] **1.3** `crates/tools` skeleton mit `Tool`-Trait inkl. `permission(): Read|Write|Exec` (project.md §1.11). Schema-Generation via `schemars`.
+- [ ] **1.6** Neuer `crates/memory` ([D8]). Loader fuer `~/.ravn/{soul.md,memory.md,user.md}`. Working-/Episodic-Stubs leer (Phase 2).
 - [ ] **1.7** Hard-Limits: Memory-Total ≤ 3000 Tokens, Soul ≤ 800, User ≤ 500. Truncation mit Warning.
-- [ ] **1.8** Anthropic-Prompt-Caching durchgehend verifiziert (≥60 % Hit-Rate auf Second-Turn).
-- [ ] **1.9** Approval-UI in TUI: Modal mit „yes/no/allow-this-arg-pattern".
-- [ ] **1.10** Tool-Output-Wrapping in `<tool_result trustworthy="false">` für injection-mitigation.
+- [ ] **1.1** `core::loop` ReAct-Implementation (thought → action → observation) mit Hard-Cap 50 Steps + Token-Budget. Integriert llm + tools + memory.
+- [ ] **1.2** `core::budget` (Step/Token/Cost-Limits) + `tokio::sync::CancellationToken` durch gesamten Loop.
+- [ ] **1.4** Native Tools (7, [D9] ohne `web_search`): `file_read`, `file_write` (Write), `shell` (Exec), `web_fetch` (Read, via reqwest+html2md), `session_search` (Read, nutzt `ravn_persistence::messages::search`), `memory_save` (Write, MEMORY.md/USER.md append-or-update), `datetime` (Read).
+- [ ] **1.5** Tool-Schemas an llm-Provider serialisieren via `ToolSchema` (existing in `ravn_llm`).
+- [ ] **1.9** Approval-UI in TUI ([D7]): Inline-Modal mit `y`/`n`/`a` (Allowlist). `Esc` cancelt den Run. Allowlist persistiert in DB.
+- [ ] **1.10** Tool-Output-Wrapping in `<tool_result trustworthy="false">…</tool_result>` fuer Prompt-Injection-Mitigation (untrusted outputs).
+- [ ] **1.8** Cache-Hit-Rate-Tracking ([D10]): pro Session aggregieren, in Statuszeile als 4. Wert anzeigen, `<60%` triggert Warn-Log.
+- [ ] **1.11** Acceptance-Smoketest end-to-end (user-verifiziert — siehe Checkliste unten).
 
-### Akzeptanzkriterien
-- Multi-Step-Task wie „search web for X, save summary to file" läuft end-to-end.
-- Cancel-Button in TUI bricht Loop binnen 100 ms ab.
-- Approval-Modal erscheint bei `shell` und `file_write`, nicht bei `file_read`/`web_search`.
-- Re-Run identischer Conversation zeigt Cache-Hit ≥ 60 %.
-- Trajectory-Log: jede ReAct-Iteration als Event mit `(thought, action, observation)` in `events`-Tabelle.
+### Phase 1 Smoketest-Checkliste
+
+Vor dem Test:
+```bash
+export ANTHROPIC_API_KEY=sk-ant-…
+DB=~/Library/Application\ Support/ravn/state.db    # macOS path
+cargo run --release -p ravn-cli
+```
+
+Nutze ein zweites Terminal für SQLite-Verifikation. Markiere bestandene Punkte mit `[x]`.
+
+**A — Startup & UI**
+- [X] TUI öffnet (alternate screen), Scrollback leer, Statuszeile zeigt `session <id> │ in 0 out 0 cache_r 0 hit  -- │ $0.0000`
+- [X] Tippen erscheint live in Input-Pane
+
+**B — Plain Chat (Regression aus Phase 0)**
+- [X] Eingabe `hi` + Enter → Antwort streamt in
+- [X] Cursor `▌` während streaming sichtbar, verschwindet bei Done
+- [X] Statuszeile zeigt nach Antwort: `in > 0`, `out > 0`, `$` mit positivem Betrag
+
+**C — Read-Tool ohne Approval** (`datetime`)
+- [ ] Eingabe: `What is today's date in Berlin?` → Assistant ruft `datetime` (siehe dim Zeile `🔎 datetime {…}` im Scrollback), KEIN Modal
+- [ ] Ergebnis-Zeile `  ✓ datetime: 2026-…` erscheint
+- [ ] Endgültige Antwort enthält aktuelles Datum
+Test dailed with: error: llm: provider anthropic returned 400: ProviderError: SSE Error: Invalid status code│
+│400 Bad Request with message:                                                             │
+│{"type":"error","error":{"type":"invalid_request_error","message":"messages.3.content.1:  │
+│`tool_use` ids must be unique"},"request_id":"req_011Cb4iHgzXnEXroppGnqxBE"}
+But then after the next input it shows datetime correctly
+
+**D — Write-Tool mit Approval-Modal** (`file_write`)
+- [X] Eingabe: `Write the word "test" to /tmp/ravn_test.txt`
+- [X] Modal erscheint, zentriert, mit Tool=`file_write`, Permission=`WRITE` (gelb), Args pretty-printed, Hint-Zeile
+- [X] Eingabe ohne Modal blockiert (`> `-Prompt zeigt `(approval needed)`)
+- [X] `y` → Modal verschwindet, dim Zeile `✓ file_write: wrote 4 bytes …`
+- [X] `cat /tmp/ravn_test.txt` → `test`
+I get an error: error: llm: provider anthropic returned 400: ProviderError: SSE Error: Invalid status code
+
+**E — Modal denial**
+- [X] Wieder: `Write "abc" to /tmp/ravn_deny.txt`
+- [X] Modal → `n` → dim Zeile `denied: file_write` (gelb)
+- [X] Datei `/tmp/ravn_deny.txt` existiert **nicht**
+- [X] Assistant-Antwort sollte erkennen, dass das Tool verweigert wurde
+
+**F — Modal cancel mit Esc**
+- [X] Eingabe: `Write "x" to /tmp/ravn_esc.txt`
+- [X] Modal → `Esc` → ganzer Run bricht ab, `error: cancelled` (rot) im Scrollback
+- [X] Datei `/tmp/ravn_esc.txt` existiert **nicht**
+
+**G — Exec-Tool mit Approval** (`shell`)
+- [x] Eingabe: `Run "echo hello world" via shell`
+- [x] Modal mit Permission=`EXEC` (rot)
+- [x] `y` → Tool läuft, dim Zeile zeigt `✓ shell: exit=0` (excerpt)
+- [x] Assistant repräsentiert das Output korrekt
+
+**H — Allowlist (`a`-Taste)**
+- [x] Eingabe: `Run "uname -s" via shell`
+- [x] Modal → `a` → Tool läuft
+- [x] Direkt danach: `Run "whoami" via shell` → **kein** Modal, Tool läuft direkt
+- [x] Allowlist gilt nur in dieser Session (neu starten → wieder Modal)
+
+Error, for some reason every input looks like is running twice, also the apporval via modal winfows: you:                                                                                      │
+│Run "whoami" via shell                                                                    │
+│                                                                                          │
+│ravn:                                                                                     │
+│Sure!                                                                                     │
+│                                                                                          │
+│⚙ shell {"command":"whoami"}                                                              │
+│                                                                                          │
+│  ✓ shell: exit=0                                                                         │
+│                                                                                          │
+│⚙ shell {"command":"whoami"}                                                              │
+│                                                                                          │
+│  ✓ shell: exit=0
+
+**I — Esc cancel während streaming**
+- [X] Eingabe: `Write me a 500-word essay about Rust ownership`
+- [X] Sobald Tokens reinkommen → `Esc` → Loop bricht ab in <1s
+- [X] Statuszeile: keine weitere Token-Erhöhung
+
+**J — Untrusted-Source wrap** (`web_fetch`)
+- [X] Eingabe: `Fetch https://example.com and tell me what it says`
+- [X] `web_fetch` läuft (kein Modal — Read-Permission)
+- [X] Assistant sollte sich darauf beziehen, dass der Inhalt aus externer Quelle stammt
+- [ ] Verifikation: `sqlite3 "$DB" "SELECT content FROM messages WHERE role='user' ORDER BY id DESC LIMIT 1;"` → enthält `<tool_result trustworthy="false">`
+Return: ravn:                                                                                     │
+│It looks like you're running a SQLite query to fetch the most recent user message from a  │
+│`messages` table. Want me to run that for you? If so, I'd need to know:                   │
+│                                                                                          │
+│1. **The path to your database file** — what should `$DB` be?                             │
+│                                                                                          │
+│Or if you're just sharing the command for reference, what are you trying to accomplish?   │
+│I'm happy to help with:                                                                   │
+│                                                                                          │
+│- **Running the query** against a specific DB file
+
+**K — Multi-Step Task** (das Big-Acceptance-Item aus PLAN.md)
+- [X] Eingabe: `Fetch https://example.com and save the page title to /tmp/ravn_title.txt`
+- [X] Erwarteter Toolchain: `web_fetch` → (Approval-Modal für) `file_write` → final
+- [ ] `cat /tmp/ravn_title.txt` enthält `Example Domain` o.ä.
+error:  ✗ file_read: io: /tmp/ravn_title.txt: No such file or directory (os error 2)
+
+**L — Persistence-Verifikation**
+```bash
+sqlite3 "$DB" <<SQL
+SELECT id, channel, model, input_tokens, output_tokens, cost_usd FROM sessions ORDER BY started_at DESC LIMIT 3;
+SELECT COUNT(*) AS msg_count, session_id FROM messages GROUP BY session_id ORDER BY msg_count DESC LIMIT 3;
+SELECT kind, COUNT(*) FROM events GROUP BY kind ORDER BY COUNT(*) DESC;
+SQL
+```
+- [ ] `sessions`: mind. 1 Row mit nicht-null `model`, positivem `cost_usd`
+- [ ] `messages`: mehrere Rows pro Session (user + assistant + tool_result-bearing user)
+- [ ] `events`: `react.tool.start`, `react.tool.end`, `react.done`, `llm.request`/`llm.response` falls noch vorhanden
+
+**M — Cache-Hit-Rate ≥ 60%** (PLAN.md Threshold)
+- [x] **Erste Session beenden** (Ctrl-C bei leerem Input → quit)
+- [X] **Neue Session starten**: `cargo run --release -p ravn-cli`
+- [X] Genau **dieselbe** erste User-Eingabe wie in vorheriger Session
+- [X] Nach Antwort: Statuszeile `cache_r > 0`, `hit XX%` mit `XX ≥ 60`
+- [ ] Bei `< 60%`: → in `~/Library/Application Support/ravn/ravn.log` sollte `WARN … cache hit-rate below 60%` stehen
+
+**N — Memory-Loader** (Phase 1.6/1.7)
+- [X] Beende die TUI
+- [X] Schreibe Test-Memory:
+  ```bash
+  mkdir -p ~/Library/Application\ Support/ravn
+  echo "Max prefers German for explanations." > ~/Library/Application\ Support/ravn/user.md
+  echo "I am ravn." > ~/Library/Application\ Support/ravn/soul.md
+  ```
+- [X] Starte TUI neu, frage: `What do you know about me?`
+- [X] Antwort sollte auf German/Max referenzieren (Identifier aus user.md)
+- [ ] Hard-Limits-Check: schreibe sehr lange user.md (`>2000 chars`), starte neu → `ravn.log` sollte `WARN … user.md truncated to 500-token cap` enthalten
+
+**O — Budget-Cap**
+- [X] In `crates/core/src/agent.rs::AgentConfig::new`, max_steps temporär auf 2 setzen (oder per env-var falls implementiert)
+- [X] Eingabe die mehrere Tool-Schritte braucht: `Run "ls /" then "ls /tmp" then "ls /etc" via shell`
+- [X] Loop terminiert mit `error: budget exceeded: max_steps` nach 2 Steps
+- [X] AgentConfig wieder zurücksetzen
+Error in test, you mean max_tokens?
+
+### Akzeptanzkriterien (Pass-Fail Phase 1)
+
+Phase 1 ist abgenommen wenn:
+- A, B, C, D, E, F, G, H, I, J, K alle ✓ (UI/Tool-Flow)
+- L ✓ (Persistence)
+- M ✓ (Cache-Hit-Rate ≥ 60% auf wiederholtem Turn)
+- N ✓ (Memory-Loader funktioniert)
+- O ✓ (Budget-Cap funktioniert — optional manuell zu testen)
 
 ---
 

@@ -110,7 +110,10 @@ impl LlmProvider for OpenAiProvider {
                 }
             };
 
-            let mut active_tool: Option<String> = None;
+            // See `anthropic.rs` for the rationale — providers can emit
+            // both ToolCallDelta and a final ToolCall for the same tool;
+            // we must not double-emit Start/Delta/End.
+            let mut delta_tool: Option<String> = None;
 
             while let Some(item) = StreamExt::next(&mut s).await {
                 match item {
@@ -133,22 +136,25 @@ impl LlmProvider for OpenAiProvider {
                             }
                         }
                         StreamedAssistantContent::ToolCall { tool_call, internal_call_id } => {
-                            if active_tool.as_deref() != Some(&internal_call_id) {
+                            if delta_tool.as_deref() == Some(&internal_call_id) {
+                                yield Ok(StreamChunk::ToolUseEnd);
+                                delta_tool = None;
+                            } else {
                                 yield Ok(StreamChunk::ToolUseStart {
                                     id: tool_call.id.clone(),
                                     name: tool_call.function.name.clone(),
                                 });
+                                yield Ok(StreamChunk::ToolUseDelta {
+                                    partial_json: tool_call.function.arguments.to_string(),
+                                });
+                                yield Ok(StreamChunk::ToolUseEnd);
                             }
-                            yield Ok(StreamChunk::ToolUseDelta {
-                                partial_json: tool_call.function.arguments.to_string(),
-                            });
-                            yield Ok(StreamChunk::ToolUseEnd);
-                            active_tool = None;
                         }
-                        StreamedAssistantContent::ToolCallDelta { id, content, .. } => {
+                        StreamedAssistantContent::ToolCallDelta { id, internal_call_id, content } => {
                             use rig_core::streaming::ToolCallDeltaContent;
                             match content {
                                 ToolCallDeltaContent::Name(name) => {
+                                    delta_tool = Some(internal_call_id);
                                     yield Ok(StreamChunk::ToolUseStart { id, name });
                                 }
                                 ToolCallDeltaContent::Delta(partial_json) => {
@@ -161,7 +167,7 @@ impl LlmProvider for OpenAiProvider {
                 }
             }
 
-            let _ = active_tool;
+            let _ = delta_tool;
             use rig_core::completion::GetTokenUsage;
             if let Some(rig_usage) = s.response.as_ref().and_then(|r| r.token_usage()) {
                 yield Ok(StreamChunk::Usage(from_rig_usage(&rig_usage)));

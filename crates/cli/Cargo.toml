@@ -14,7 +14,11 @@ path = "src/main.rs"
 [dependencies]
 ravn-core.workspace = true
 ravn-llm.workspace = true
+ravn-memory.workspace = true
 ravn-persistence.workspace = true
+ravn-tools.workspace = true
+
+async-trait.workspace = true
 
 tokio.workspace = true
 tokio-util.workspace = true

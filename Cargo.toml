@@ -2,7 +2,9 @@
 members = [
     "crates/core",
     "crates/llm",
+    "crates/memory",
     "crates/persistence",
+    "crates/tools",
     "crates/cli",
 ]
 resolver = "2"
@@ -51,11 +53,17 @@ crossterm = { version = "0.28", features = ["event-stream"] }
 
 # --- IDs / time ---
 uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+
+# --- HTTP ---
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "charset", "http2"] }
 
 # --- Internal workspace crates ---
 ravn-core = { path = "crates/core" }
 ravn-llm = { path = "crates/llm" }
+ravn-memory = { path = "crates/memory" }
 ravn-persistence = { path = "crates/persistence" }
+ravn-tools = { path = "crates/tools" }
 
 [profile.dev]
 opt-level = 0
