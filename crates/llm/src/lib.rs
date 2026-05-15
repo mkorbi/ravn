@@ -10,6 +10,7 @@
 //! loop and trait surface live here, under our control).
 
 pub mod message;
+pub mod openai;
 pub mod provider;
 pub mod request;
 pub mod response;

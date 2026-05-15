@@ -34,8 +34,8 @@
 - [ ] **0.1** Cargo-Workspace anlegen mit `resolver = "2"`, `rust-version`, Workspace-Dependencies.
 - [ ] **0.2** Crates `core`, `llm`, `persistence`, `cli` skeletten + leere `lib.rs`.
 - [ ] **0.3** `LlmProvider`-Trait (siehe project.md §1.1) mit `complete`/`stream`/`supports_caching`/`supports_reasoning`.
-- [ ] **0.4** `llm::openai` Adapter über `async-openai` 0.34+.
-- [ ] **0.5** `llm::anthropic` Adapter mit `cache_control`-Marker-Support (Tools+System).
+- [ ] **0.4** `llm::openai` Adapter — wrappt `rig::providers::openai::Client` (D1). Übersetzt unsere `CompletionRequest`/`Response`/`Message` ↔ rig's Typen.
+- [ ] **0.5** `llm::anthropic` Adapter — wrappt `rig::providers::anthropic::Client` (D1). `cache_control`-Marker via `CompletionRequest::additional_params`, falls rig's native API es nicht direkt exposed.
 - [ ] **0.6** SQLite-Schema-Migration: `sessions`, `messages`, `events`, `messages_fts` (FTS5). Migration via `sqlx::migrate!` oder `rusqlite_migration`.
 - [ ] **0.7** `persistence::repo` mit Session-Open/Close, Message-Append, Event-Append.
 - [ ] **0.8** ratatui-TUI: scrollbares Message-Pane + Input-Pane + Streaming via `tokio::sync::mpsc`.

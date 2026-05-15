@@ -41,6 +41,8 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 
 # --- LLM (D1: rig-core for provider backends + raw ReAct loop on top) ---
 rig-core = "0.37"
+# async-openai retained as documented fallback if rig-core lacks an
+# OpenAI-specific feature we need; not pulled in by any crate yet.
 async-openai = "0.38"
 
 # --- TUI (D4: ratatui from Phase 0, Tauri added in Phase 4) ---
