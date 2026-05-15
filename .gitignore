@@ -1,0 +1,21 @@
+/target
+**/*.rs.bk
+Cargo.lock.bak
+
+# Editors / OS / tooling state
+.DS_Store
+.idea/
+.vscode/
+.claude/
+*.swp
+
+# Local config / secrets
+.env
+.env.local
+*.local.toml
+
+# Runtime data
+*.db
+*.db-shm
+*.db-wal
+/data/
