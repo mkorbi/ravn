@@ -8,6 +8,7 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+ravn-embeddings.workspace = true
 ravn-llm.workspace = true
 ravn-memory.workspace = true
 ravn-persistence.workspace = true

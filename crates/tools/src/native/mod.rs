@@ -9,6 +9,9 @@
 //! [`crate::ToolRegistry`].
 
 use std::path::PathBuf;
+use std::sync::Arc;
+
+use ravn_embeddings::Embedder;
 
 pub mod datetime;
 pub mod file_read;
@@ -28,14 +31,20 @@ pub use web_fetch::WebFetch;
 
 use crate::ToolRegistry;
 
-/// Register all Phase-1 native tools. `data_dir` is the location of
-/// `soul.md` / `memory.md` / `user.md` used by `memory_save`.
-pub fn register_defaults(reg: &mut ToolRegistry, data_dir: PathBuf) -> &mut ToolRegistry {
+/// Register all native tools. `data_dir` is the location of
+/// `soul.md` / `memory.md` / `user.md` (used by `memory_save`).
+/// `embedder` is optional — passing `Some` enables hybrid FTS5 + vec
+/// search in `session_search` (Phase 2.10).
+pub fn register_defaults(
+    reg: &mut ToolRegistry,
+    data_dir: PathBuf,
+    embedder: Option<Arc<Embedder>>,
+) -> &mut ToolRegistry {
     reg.register(FileRead);
     reg.register(FileWrite);
     reg.register(Shell);
     reg.register(WebFetch::new());
-    reg.register(SessionSearch);
+    reg.register(SessionSearch::new(embedder));
     reg.register(MemorySave { data_dir });
     reg.register(DateTime);
     reg

@@ -9,6 +9,10 @@ use tempfile::TempDir;
 use crate::native::{
     register_defaults, DateTime, FileRead, FileWrite, MemorySave, SessionSearch, Shell,
 };
+
+fn no_embedder() -> Option<std::sync::Arc<ravn_embeddings::Embedder>> {
+    None
+}
 use crate::{AllowAll, Permission, Tool, ToolContext, ToolError, ToolRegistry};
 
 async fn ctx() -> (ToolContext, Db) {
@@ -168,7 +172,7 @@ async fn session_search_finds_message() {
     ravn_persistence::messages::append(&db, "sess", "user", "berlin weather forecast")
         .await
         .unwrap();
-    let out = SessionSearch
+    let out = SessionSearch::new(no_embedder())
         .invoke(json!({"query": "berlin"}), &c)
         .await
         .unwrap();
@@ -179,7 +183,7 @@ async fn session_search_finds_message() {
 #[tokio::test]
 async fn session_search_empty_returns_no_hits_message() {
     let (c, _) = ctx().await;
-    let out = SessionSearch
+    let out = SessionSearch::new(no_embedder())
         .invoke(json!({"query": "zzznothing"}), &c)
         .await
         .unwrap();
@@ -236,7 +240,7 @@ async fn memory_save_replace_overwrites() {
 async fn register_defaults_registers_seven() {
     let mut reg = ToolRegistry::new();
     let dir = TempDir::new().unwrap();
-    register_defaults(&mut reg, dir.path().to_path_buf());
+    register_defaults(&mut reg, dir.path().to_path_buf(), no_embedder());
     assert_eq!(reg.len(), 7);
 
     let names: std::collections::HashSet<_> = reg.names().collect();
@@ -257,7 +261,7 @@ async fn register_defaults_registers_seven() {
 async fn permissions_match_phase1_spec() {
     let mut reg = ToolRegistry::new();
     let dir = TempDir::new().unwrap();
-    register_defaults(&mut reg, dir.path().to_path_buf());
+    register_defaults(&mut reg, dir.path().to_path_buf(), no_embedder());
 
     let perm = |name: &str| reg.get(name).unwrap().permission();
     assert_eq!(perm("file_read"), Permission::Read);
@@ -273,7 +277,7 @@ async fn permissions_match_phase1_spec() {
 async fn as_schemas_produces_jsonschema_per_tool() {
     let mut reg = ToolRegistry::new();
     let dir = TempDir::new().unwrap();
-    register_defaults(&mut reg, dir.path().to_path_buf());
+    register_defaults(&mut reg, dir.path().to_path_buf(), no_embedder());
 
     let schemas = reg.as_schemas();
     assert_eq!(schemas.len(), 7);
