@@ -19,10 +19,15 @@ Ein **zweites** Terminal offen halten — dort laufen die SQL-Verifikationen.
 Das hier ist wichtig: alle `sqlite3 …` und `cat …` Commands gehören
 ins zweite Terminal, **nie** in die TUI tippen.
 
-DB-Pfad als Shell-Variable (macOS):
+**Pfad-Sanity-Check** (im zweiten Terminal, **bevor** du SQL ausführst):
 ```bash
-DB="$HOME/Library/Application Support/ravn/state.db"
+ls -la ~/Library/Application\ Support/ravn/state.db
+sqlite3 ~/Library/Application\ Support/ravn/state.db ".tables"
 ```
+Du solltest die Datei sehen (≥ 4 KB) **und** die Tabellen-Liste enthält
+mindestens `sessions`, `messages`, `messages_fts`, `events`. Wenn nicht,
+gibt es ein Pfad-Problem und du hast eine andere DB erwischt — checke
+`echo $HOME` und ob `~/Library/Application\ Support/ravn/` existiert.
 
 ---
 
@@ -38,11 +43,11 @@ What is today's date in Berlin?
 ```
 
 Pass-Kriterien:
-- [ ] Im Scrollback erscheint dim `🔎 datetime {…}` (Tool-Start, **kein** Modal)
-- [ ] Dann `  ✓ datetime: 2026-…` (Tool-Ergebnis)
-- [ ] Endgültige Assistant-Antwort enthält das aktuelle Datum
-- [ ] **Kein** Error-Banner („tool_use ids must be unique" oder ähnlich)
-- [ ] **Genau ein** `🔎 datetime`-Block, nicht zwei
+- [X] Im Scrollback erscheint dim `🔎 datetime {…}` (Tool-Start, **kein** Modal)
+- [X] Dann `  ✓ datetime: 2026-…` (Tool-Ergebnis)
+- [X] Endgültige Assistant-Antwort enthält das aktuelle Datum
+- [X] **Kein** Error-Banner („tool_use ids must be unique" oder ähnlich)
+- [X] **Genau ein** `🔎 datetime`-Block, nicht zwei
 
 ---
 
@@ -56,11 +61,11 @@ Write the word "test" to /tmp/ravn_test.txt
 ```
 
 Pass-Kriterien:
-- [ ] Modal erscheint mit `file_write`, `WRITE`, Args pretty-printed
-- [ ] `y` → Modal weg, dim Zeile `  ✓ file_write: wrote …`
-- [ ] **Genau ein** Modal-Popup, nicht zwei hintereinander
-- [ ] Im zweiten Terminal: `cat /tmp/ravn_test.txt` → `test`
-- [ ] **Kein** 400-Error
+- [X] Modal erscheint mit `file_write`, `WRITE`, Args pretty-printed
+- [X] `y` → Modal weg, dim Zeile `  ✓ file_write: wrote …`
+- [X] **Genau ein** Modal-Popup, nicht zwei hintereinander
+- [X] Im zweiten Terminal: `cat /tmp/ravn_test.txt` → `test`
+- [X] **Kein** 400-Error
 
 ---
 
@@ -72,16 +77,16 @@ In TUI eingeben:
 ```
 Run "uname -s" via shell
 ```
-- [ ] Modal → `a` → läuft, dim Zeile `  ✓ shell: exit=0 …`
-- [ ] **Genau ein** `⚙ shell {"command":"uname -s"}` Block, nicht zwei
+- [X] Modal → `a` → läuft, dim Zeile `  ✓ shell: exit=0 …`
+- [X] **Genau ein** `⚙ shell {"command":"uname -s"}` Block, nicht zwei
 
 Direkt danach in TUI:
 ```
 Run "whoami" via shell
 ```
-- [ ] **Kein** Modal (Allowlist greift)
-- [ ] **Genau ein** `⚙ shell {"command":"whoami"}` Block, nicht zwei
-- [ ] **Genau ein** `✓ shell: exit=0` Block
+- [X] **Kein** Modal (Allowlist greift)
+- [X] **Genau ein** `⚙ shell {"command":"whoami"}` Block, nicht zwei
+- [X] **Genau ein** `✓ shell: exit=0` Block
 
 ---
 
@@ -94,13 +99,16 @@ In **TUI**:
 ```
 Fetch https://example.com and tell me what it says
 ```
-- [ ] Im Scrollback `🔎 web_fetch` (kein Modal, Read)
-- [ ] Assistant-Antwort beschreibt den Inhalt
+- [x] Im Scrollback `🔎 web_fetch` (kein Modal, Read)
+- [x] Assistant-Antwort beschreibt den Inhalt
 
-Dann im **zweiten Terminal** (Shell, nicht TUI!):
+Dann im **zweiten Terminal** (Shell, nicht TUI!), Pfad direkt inline:
 ```bash
-sqlite3 "$DB" "SELECT content FROM messages WHERE role='user' ORDER BY id DESC LIMIT 1;"
+sqlite3 ~/Library/Application\ Support/ravn/state.db \
+  "SELECT content FROM messages WHERE role='user' ORDER BY id DESC LIMIT 1;"
 ```
+
+Pass-Kriterien:
 - [ ] Output enthält den String `<tool_result trustworthy="false">` und `</tool_result>` als Wrapper um den web_fetch-Output
 
 ---
@@ -123,43 +131,43 @@ Use web_fetch to load https://example.com. Then use file_write to write the H1 h
 ```
 
 Pass-Kriterien:
-- [ ] Toolchain: `🔎 web_fetch` → Approval-Modal für `file_write` → `y` → `  ✓ file_write: wrote …`
-- [ ] Im zweiten Terminal: `cat /tmp/ravn_title.txt` enthält `Example Domain` oder ähnlich
-- [ ] **Kein** 400-Error
+- [X] Toolchain: `🔎 web_fetch` → Approval-Modal für `file_write` → `y` → `  ✓ file_write: wrote …`
+- [X] Im zweiten Terminal: `cat /tmp/ravn_title.txt` enthält `Example Domain` oder ähnlich
+- [X] **Kein** 400-Error
 
 ---
 
 ### Block L — Persistence-Verifikation (im zweiten Terminal)
 
-Vorher unklar formuliert — das hier ist **alles Shell**, nichts davon
-in die TUI tippen.
+Vorher unklar: `$DB`-Variable war im zweiten Terminal nicht gesetzt
+(sie galt nur im ersten). Diesmal hardcoded inline, drei einzelne
+Queries statt Heredoc:
 
 ```bash
-sqlite3 "$DB" <<'SQL'
-.headers on
-.mode column
-SELECT id, channel, model, input_tokens, output_tokens, cost_usd
-  FROM sessions
-  ORDER BY started_at DESC
-  LIMIT 3;
+# 1) Sessions
+sqlite3 -header -column \
+  ~/Library/Application\ Support/ravn/state.db \
+  "SELECT id, channel, model, input_tokens, output_tokens, cost_usd
+     FROM sessions ORDER BY started_at DESC LIMIT 3;"
 
-SELECT COUNT(*) AS msg_count, session_id
-  FROM messages
-  GROUP BY session_id
-  ORDER BY msg_count DESC
-  LIMIT 3;
+# 2) Message counts per session
+sqlite3 -header -column \
+  ~/Library/Application\ Support/ravn/state.db \
+  "SELECT COUNT(*) AS msg_count, session_id
+     FROM messages GROUP BY session_id
+     ORDER BY msg_count DESC LIMIT 3;"
 
-SELECT kind, COUNT(*) AS n
-  FROM events
-  GROUP BY kind
-  ORDER BY n DESC;
-SQL
+# 3) Events by kind
+sqlite3 -header -column \
+  ~/Library/Application\ Support/ravn/state.db \
+  "SELECT kind, COUNT(*) AS n
+     FROM events GROUP BY kind ORDER BY n DESC;"
 ```
 
 Pass-Kriterien:
-- [ ] Erste Query: mind. eine Row mit nicht-null `model` und `cost_usd > 0`
-- [ ] Zweite Query: mind. ein Wert `msg_count > 2` (User + Assistant + ggf. Tool-Result-User)
-- [ ] Dritte Query: die Liste enthält mindestens `react.done`, `react.tool.start`, `react.tool.end` (sofern Block C, D oder K erfolgreich war)
+- [ ] 1) mind. eine Row mit nicht-null `model` und `cost_usd > 0`
+- [ ] 2) mind. ein Wert `msg_count > 2` (User + Assistant + ggf. Tool-Result-User)
+- [ ] 3) Liste enthält mindestens `react.done`, `react.tool.start`, `react.tool.end`
 
 ---
 
@@ -171,7 +179,7 @@ Wenn die Statuszeile bereits `hit ≥ 60%` zeigt, ist Block M
 vollständig grün, kein log-File-Check nötig.
 
 Falls hit_rate < 60% (z.B. ganz neue Conversation, kleine Eingaben):
-- [ ] Optional: schau in `~/Library/Application Support/ravn/ravn.log`
+- [x] Optional: schau in `~/Library/Application Support/ravn/ravn.log`
   → erst nach 5000+ input tokens sollte da `WARN … cache hit-rate below 60%` stehen
 
 In jedem anderen Fall ist Block M durch die TUI-Statuszeile schon
@@ -203,7 +211,7 @@ tail -20 "$HOME/Library/Application Support/ravn/ravn.log"
 ```
 
 Pass-Kriterien:
-- [ ] In ravn.log steht eine Zeile mit `user.md truncated to 500-token cap`
+- [x] In ravn.log steht eine Zeile mit `user.md truncated to 500-token cap`
 
 Aufräumen danach:
 ```bash
@@ -212,32 +220,51 @@ echo "Max prefers German for explanations." > "$HOME/Library/Application Support
 
 ---
 
-### Block O — Budget-Cap (Klarstellung)
+### Block O — Budget-Cap
 
-Letztes Mal Frage: „you mean max_tokens?" — nein, **`max_steps`**.
-Liegt im Struct `Budget` in `crates/core/src/budget.rs`. Um es zu
-testen, in `crates/cli/src/main.rs` nach der Zeile
-`let agent_config = AgentConfig::new(model.clone());` temporär einfügen:
+Konkretere Anleitung. Wir suchen in `crates/cli/src/main.rs` **Zeile 78**:
 
 ```rust
-let agent_config = {
-    let mut c = agent_config;
-    c.budget.max_steps = 2;
-    c
-};
+    let agent_config = AgentConfig::new(model.clone());
 ```
 
-Dann `cargo run --release -p ravn-cli` und in TUI:
+Diese eine Zeile ersetzt du temporär durch **zwei** Zeilen:
+
+```rust
+    let mut agent_config = AgentConfig::new(model.clone());
+    agent_config.budget.max_steps = 2;
+```
+
+(Also: `let` → `let mut`, und eine Zeile drunter den `max_steps` setzen.)
+
+Verifikation des Edits im zweiten Terminal:
+```bash
+grep -n "agent_config\.budget" ~/ravn/crates/cli/src/main.rs
+```
+Du solltest `agent_config.budget.max_steps = 2;` sehen.
+
+Dann build + run + test:
+```bash
+cd ~/ravn
+cargo run --release -p ravn-cli
+```
+
+In der TUI:
 ```
 Run "ls /" then "ls /tmp" then "ls /etc" — each via the shell tool.
 ```
 
 Pass-Kriterien:
-- [ ] Loop bricht ab mit Zeile `error: budget exceeded: max_steps`
-  (zweites Tool-Call schlägt noch durch, drittes nicht mehr)
+- [ ] Modal kommt für den ersten `shell`-Call → `y`
+- [ ] (Optional) zweiter Modal → `y`
+- [ ] Loop bricht ab mit `error: budget exceeded: max_steps` im Scrollback,
+  bevor das dritte Tool laufen kann
 
-Danach: das Snippet in main.rs wieder rausnehmen / `git checkout
-crates/cli/src/main.rs`.
+Aufräumen danach (im zweiten Terminal):
+```bash
+cd ~/ravn
+git checkout crates/cli/src/main.rs
+```
 
 ---
 
