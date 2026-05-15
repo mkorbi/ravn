@@ -2,6 +2,7 @@
 members = [
     "crates/core",
     "crates/llm",
+    "crates/memory",
     "crates/persistence",
     "crates/tools",
     "crates/cli",
@@ -56,6 +57,7 @@ uuid = { version = "1", features = ["v4"] }
 # --- Internal workspace crates ---
 ravn-core = { path = "crates/core" }
 ravn-llm = { path = "crates/llm" }
+ravn-memory = { path = "crates/memory" }
 ravn-persistence = { path = "crates/persistence" }
 ravn-tools = { path = "crates/tools" }
 
