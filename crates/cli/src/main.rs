@@ -78,6 +78,28 @@ async fn main() -> anyhow::Result<()> {
     // (no startup cost if the user never triggers a search).
     let embedder = Arc::new(Embedder::default_qwen3());
 
+    // Sync skills from ~/.ravn/skills/ into the DB mirror at startup
+    // (Phase 2.4/2.5). Embeddings happen fire-and-forget — the
+    // skill_list tool returns metadata immediately even if the vec
+    // index hasn't caught up yet.
+    let skills_dir = data_dir.join("skills");
+    match ravn_skills::load_all_from_fs(&skills_dir).await {
+        Ok(skills) if !skills.is_empty() => {
+            match ravn_skills::sync_to_db(&db, skills, Some(embedder.clone())).await {
+                Ok(stats) => tracing::info!(
+                    inserted = stats.inserted,
+                    updated = stats.updated,
+                    unchanged = stats.unchanged,
+                    deleted = stats.deleted,
+                    "skills sync done"
+                ),
+                Err(e) => tracing::warn!(error = %e, "skills sync failed"),
+            }
+        }
+        Ok(_) => tracing::debug!("no skills configured in {}", skills_dir.display()),
+        Err(e) => tracing::warn!(error = %e, "skills load failed"),
+    }
+
     let mut registry = ToolRegistry::new();
     native::register_defaults(&mut registry, data_dir.clone(), Some(embedder.clone()));
 

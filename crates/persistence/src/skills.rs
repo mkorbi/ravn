@@ -127,3 +127,66 @@ pub async fn search(db: &Db, query: &str, limit: i64) -> Result<Vec<SkillRow>, E
     .await?;
     Ok(rows)
 }
+
+/// Fetch a set of skills by their row IDs. Preserves the input order
+/// — used by [`search_hybrid`] to return rows in RRF-ranked order.
+pub async fn get_by_ids(db: &Db, ids: &[i64]) -> Result<Vec<SkillRow>, Error> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = std::iter::repeat_n("?", ids.len())
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!("SELECT * FROM skills WHERE id IN ({placeholders})");
+    let mut q = sqlx::query_as::<_, SkillRow>(&sql);
+    for id in ids {
+        q = q.bind(id);
+    }
+    let rows = q.fetch_all(&db.pool).await?;
+    let mut by_id: std::collections::HashMap<i64, SkillRow> =
+        rows.into_iter().map(|r| (r.id, r)).collect();
+    Ok(ids.iter().filter_map(|i| by_id.remove(i)).collect())
+}
+
+/// Hybrid FTS5 + vector search with Reciprocal Rank Fusion. Mirrors
+/// [`crate::messages::search_hybrid`] but against the `skills` table +
+/// `skills_vec` virtual table. Returns up to `limit` rows ranked by
+/// combined RRF score (k_rrf=60).
+pub async fn search_hybrid(
+    db: &Db,
+    query_text: &str,
+    query_vec: &[f32],
+    limit: i64,
+) -> Result<Vec<SkillRow>, Error> {
+    const K_RRF: f64 = 60.0;
+    let over = (limit * 2).max(20);
+
+    if query_vec.is_empty() {
+        return search(db, query_text, limit).await;
+    }
+
+    let (text_res, vec_res) = tokio::join!(
+        search(db, query_text, over),
+        crate::vector::search(db, crate::vector::VecTable::Skills, query_vec, over),
+    );
+    let text_hits = text_res?;
+    let vec_hits = vec_res?;
+
+    let mut scores: std::collections::HashMap<i64, f64> = std::collections::HashMap::new();
+    for (rank, row) in text_hits.iter().enumerate() {
+        *scores.entry(row.id).or_default() += 1.0 / (K_RRF + (rank + 1) as f64);
+    }
+    for (rank, hit) in vec_hits.iter().enumerate() {
+        *scores.entry(hit.rowid).or_default() += 1.0 / (K_RRF + (rank + 1) as f64);
+    }
+
+    let mut ranked: Vec<(i64, f64)> = scores.into_iter().collect();
+    ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    let top_ids: Vec<i64> = ranked
+        .into_iter()
+        .take(limit as usize)
+        .map(|(id, _)| id)
+        .collect();
+
+    get_by_ids(db, &top_ids).await
+}

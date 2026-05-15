@@ -19,6 +19,8 @@ pub mod file_write;
 pub mod memory_save;
 pub mod session_search;
 pub mod shell;
+pub mod skill_list;
+pub mod skill_view;
 pub mod web_fetch;
 
 pub use datetime::DateTime;
@@ -27,6 +29,8 @@ pub use file_write::FileWrite;
 pub use memory_save::MemorySave;
 pub use session_search::SessionSearch;
 pub use shell::Shell;
+pub use skill_list::SkillList;
+pub use skill_view::SkillView;
 pub use web_fetch::WebFetch;
 
 use crate::ToolRegistry;
@@ -47,5 +51,7 @@ pub fn register_defaults(
     reg.register(SessionSearch::new(embedder));
     reg.register(MemorySave { data_dir });
     reg.register(DateTime);
+    reg.register(SkillList);
+    reg.register(SkillView);
     reg
 }

@@ -190,6 +190,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fts_search_finds_inserted_skill() {
+        let (db, _td) = fresh_db().await;
+        sync_to_db(
+            &db,
+            vec![
+                skill("git-workflow", "How to commit, branch, rebase"),
+                skill("note-taking", "Capture ideas in markdown"),
+            ],
+            None,
+        )
+        .await
+        .unwrap();
+
+        let hits = ravn_persistence::skills::search(&db, "commit", 10)
+            .await
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].name, "git-workflow");
+    }
+
+    #[tokio::test]
     async fn missing_from_fs_gets_deleted() {
         let (db, _td) = fresh_db().await;
         sync_to_db(&db, vec![skill("a", "body a"), skill("b", "body b")], None)

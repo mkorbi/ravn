@@ -3391,6 +3391,7 @@ dependencies = [
  "ravn-mcp",
  "ravn-memory",
  "ravn-persistence",
+ "ravn-skills",
  "ravn-tools",
  "serde_json",
  "tokio",
