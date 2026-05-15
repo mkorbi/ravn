@@ -177,6 +177,23 @@ After every code change.
     }
 
     #[tokio::test]
+    async fn shipped_initial_skills_parse() {
+        // CARGO_MANIFEST_DIR points at crates/skills — initial/ is a
+        // sibling of src/.
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let initial = manifest_dir.join("initial");
+        let skills = load_all_from_fs(&initial).await.unwrap();
+        let mut names: Vec<_> = skills.iter().map(|s| s.name.clone()).collect();
+        names.sort();
+        assert_eq!(names, vec!["git-workflow", "note-taking", "web-research"]);
+        // Each should have a non-empty description + body.
+        for s in &skills {
+            assert!(!s.description.trim().is_empty(), "{}: empty description", s.name);
+            assert!(!s.body.trim().is_empty(), "{}: empty body", s.name);
+        }
+    }
+
+    #[tokio::test]
     async fn load_all_missing_dir_returns_empty() {
         let dir = TempDir::new().unwrap();
         let skills = load_all_from_fs(&dir.path().join("absent"))
