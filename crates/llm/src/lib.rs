@@ -9,11 +9,13 @@
 //! the framework decision (`rig-core` for provider backends, but the ReAct
 //! loop and trait surface live here, under our control).
 
+pub mod anthropic;
 pub mod message;
 pub mod openai;
 pub mod provider;
 pub mod request;
 pub mod response;
+pub(crate) mod rig_bridge;
 
 pub use message::{ContentBlock, Message, Role};
 pub use provider::{Error, LlmProvider};
