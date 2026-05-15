@@ -73,14 +73,124 @@
 - [ ] **1.9** Approval-UI in TUI ([D7]): Inline-Modal mit `y`/`n`/`a` (Allowlist). `Esc` cancelt den Run. Allowlist persistiert in DB.
 - [ ] **1.10** Tool-Output-Wrapping in `<tool_result trustworthy="false">…</tool_result>` fuer Prompt-Injection-Mitigation (untrusted outputs).
 - [ ] **1.8** Cache-Hit-Rate-Tracking ([D10]): pro Session aggregieren, in Statuszeile als 4. Wert anzeigen, `<60%` triggert Warn-Log.
-- [ ] **1.11** Acceptance-Smoketest end-to-end: Multi-Step-Task laeuft, cancellation funktioniert, cache_read>0 auf zweitem Turn.
+- [ ] **1.11** Acceptance-Smoketest end-to-end (user-verifiziert — siehe Checkliste unten).
 
-### Akzeptanzkriterien
-- Multi-Step-Task wie „search web for X, save summary to file" läuft end-to-end (mit `web_fetch` statt `web_search`).
-- Cancel-Button in TUI bricht Loop binnen 100 ms ab.
-- Approval-Modal erscheint bei `shell`/`file_write`/`memory_save`, nicht bei `file_read`/`web_fetch`/`session_search`/`datetime`.
-- Re-Run identischer Conversation zeigt Cache-Hit ≥ 60 %.
-- Trajectory-Log: jede ReAct-Iteration als Event mit `(thought, action, observation)` in `events`-Tabelle.
+### Phase 1 Smoketest-Checkliste
+
+Vor dem Test:
+```bash
+export ANTHROPIC_API_KEY=sk-ant-…
+DB=~/Library/Application\ Support/ravn/state.db    # macOS path
+cargo run --release -p ravn-cli
+```
+
+Nutze ein zweites Terminal für SQLite-Verifikation. Markiere bestandene Punkte mit `[x]`.
+
+**A — Startup & UI**
+- [ ] TUI öffnet (alternate screen), Scrollback leer, Statuszeile zeigt `session <id> │ in 0 out 0 cache_r 0 hit  -- │ $0.0000`
+- [ ] Tippen erscheint live in Input-Pane
+
+**B — Plain Chat (Regression aus Phase 0)**
+- [ ] Eingabe `hi` + Enter → Antwort streamt in
+- [ ] Cursor `▌` während streaming sichtbar, verschwindet bei Done
+- [ ] Statuszeile zeigt nach Antwort: `in > 0`, `out > 0`, `$` mit positivem Betrag
+
+**C — Read-Tool ohne Approval** (`datetime`)
+- [ ] Eingabe: `What is today's date in Berlin?` → Assistant ruft `datetime` (siehe dim Zeile `🔎 datetime {…}` im Scrollback), KEIN Modal
+- [ ] Ergebnis-Zeile `  ✓ datetime: 2026-…` erscheint
+- [ ] Endgültige Antwort enthält aktuelles Datum
+
+**D — Write-Tool mit Approval-Modal** (`file_write`)
+- [ ] Eingabe: `Write the word "test" to /tmp/ravn_test.txt`
+- [ ] Modal erscheint, zentriert, mit Tool=`file_write`, Permission=`WRITE` (gelb), Args pretty-printed, Hint-Zeile
+- [ ] Eingabe ohne Modal blockiert (`> `-Prompt zeigt `(approval needed)`)
+- [ ] `y` → Modal verschwindet, dim Zeile `✓ file_write: wrote 4 bytes …`
+- [ ] `cat /tmp/ravn_test.txt` → `test`
+
+**E — Modal denial**
+- [ ] Wieder: `Write "abc" to /tmp/ravn_deny.txt`
+- [ ] Modal → `n` → dim Zeile `denied: file_write` (gelb)
+- [ ] Datei `/tmp/ravn_deny.txt` existiert **nicht**
+- [ ] Assistant-Antwort sollte erkennen, dass das Tool verweigert wurde
+
+**F — Modal cancel mit Esc**
+- [ ] Eingabe: `Write "x" to /tmp/ravn_esc.txt`
+- [ ] Modal → `Esc` → ganzer Run bricht ab, `error: cancelled` (rot) im Scrollback
+- [ ] Datei `/tmp/ravn_esc.txt` existiert **nicht**
+
+**G — Exec-Tool mit Approval** (`shell`)
+- [ ] Eingabe: `Run "echo hello world" via shell`
+- [ ] Modal mit Permission=`EXEC` (rot)
+- [ ] `y` → Tool läuft, dim Zeile zeigt `✓ shell: exit=0` (excerpt)
+- [ ] Assistant repräsentiert das Output korrekt
+
+**H — Allowlist (`a`-Taste)**
+- [ ] Eingabe: `Run "uname -s" via shell`
+- [ ] Modal → `a` → Tool läuft
+- [ ] Direkt danach: `Run "whoami" via shell` → **kein** Modal, Tool läuft direkt
+- [ ] Allowlist gilt nur in dieser Session (neu starten → wieder Modal)
+
+**I — Esc cancel während streaming**
+- [ ] Eingabe: `Write me a 500-word essay about Rust ownership`
+- [ ] Sobald Tokens reinkommen → `Esc` → Loop bricht ab in <1s
+- [ ] Statuszeile: keine weitere Token-Erhöhung
+
+**J — Untrusted-Source wrap** (`web_fetch`)
+- [ ] Eingabe: `Fetch https://example.com and tell me what it says`
+- [ ] `web_fetch` läuft (kein Modal — Read-Permission)
+- [ ] Assistant sollte sich darauf beziehen, dass der Inhalt aus externer Quelle stammt
+- [ ] Verifikation: `sqlite3 "$DB" "SELECT content FROM messages WHERE role='user' ORDER BY id DESC LIMIT 1;"` → enthält `<tool_result trustworthy="false">`
+
+**K — Multi-Step Task** (das Big-Acceptance-Item aus PLAN.md)
+- [ ] Eingabe: `Fetch https://example.com and save the page title to /tmp/ravn_title.txt`
+- [ ] Erwarteter Toolchain: `web_fetch` → (Approval-Modal für) `file_write` → final
+- [ ] `cat /tmp/ravn_title.txt` enthält `Example Domain` o.ä.
+
+**L — Persistence-Verifikation**
+```bash
+sqlite3 "$DB" <<SQL
+SELECT id, channel, model, input_tokens, output_tokens, cost_usd FROM sessions ORDER BY started_at DESC LIMIT 3;
+SELECT COUNT(*) AS msg_count, session_id FROM messages GROUP BY session_id ORDER BY msg_count DESC LIMIT 3;
+SELECT kind, COUNT(*) FROM events GROUP BY kind ORDER BY COUNT(*) DESC;
+SQL
+```
+- [ ] `sessions`: mind. 1 Row mit nicht-null `model`, positivem `cost_usd`
+- [ ] `messages`: mehrere Rows pro Session (user + assistant + tool_result-bearing user)
+- [ ] `events`: `react.tool.start`, `react.tool.end`, `react.done`, `llm.request`/`llm.response` falls noch vorhanden
+
+**M — Cache-Hit-Rate ≥ 60%** (PLAN.md Threshold)
+- [ ] **Erste Session beenden** (Ctrl-C bei leerem Input → quit)
+- [ ] **Neue Session starten**: `cargo run --release -p ravn-cli`
+- [ ] Genau **dieselbe** erste User-Eingabe wie in vorheriger Session
+- [ ] Nach Antwort: Statuszeile `cache_r > 0`, `hit XX%` mit `XX ≥ 60`
+- [ ] Bei `< 60%`: → in `~/Library/Application Support/ravn/ravn.log` sollte `WARN … cache hit-rate below 60%` stehen
+
+**N — Memory-Loader** (Phase 1.6/1.7)
+- [ ] Beende die TUI
+- [ ] Schreibe Test-Memory:
+  ```bash
+  mkdir -p ~/Library/Application\ Support/ravn
+  echo "Max prefers German for explanations." > ~/Library/Application\ Support/ravn/user.md
+  echo "I am ravn." > ~/Library/Application\ Support/ravn/soul.md
+  ```
+- [ ] Starte TUI neu, frage: `What do you know about me?`
+- [ ] Antwort sollte auf German/Max referenzieren (Identifier aus user.md)
+- [ ] Hard-Limits-Check: schreibe sehr lange user.md (`>2000 chars`), starte neu → `ravn.log` sollte `WARN … user.md truncated to 500-token cap` enthalten
+
+**O — Budget-Cap**
+- [ ] In `crates/core/src/agent.rs::AgentConfig::new`, max_steps temporär auf 2 setzen (oder per env-var falls implementiert)
+- [ ] Eingabe die mehrere Tool-Schritte braucht: `Run "ls /" then "ls /tmp" then "ls /etc" via shell`
+- [ ] Loop terminiert mit `error: budget exceeded: max_steps` nach 2 Steps
+- [ ] AgentConfig wieder zurücksetzen
+
+### Akzeptanzkriterien (Pass-Fail Phase 1)
+
+Phase 1 ist abgenommen wenn:
+- A, B, C, D, E, F, G, H, I, J, K alle ✓ (UI/Tool-Flow)
+- L ✓ (Persistence)
+- M ✓ (Cache-Hit-Rate ≥ 60% auf wiederholtem Turn)
+- N ✓ (Memory-Loader funktioniert)
+- O ✓ (Budget-Cap funktioniert — optional manuell zu testen)
 
 ---
 
