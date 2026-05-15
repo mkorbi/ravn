@@ -47,7 +47,10 @@ async-openai = "0.38"
 
 # --- TUI (D4: ratatui from Phase 0, Tauri added in Phase 4) ---
 ratatui = "0.29"
-crossterm = "0.28"
+crossterm = { version = "0.28", features = ["event-stream"] }
+
+# --- IDs / time ---
+uuid = { version = "1", features = ["v4"] }
 
 # --- Internal workspace crates ---
 ravn-core = { path = "crates/core" }
