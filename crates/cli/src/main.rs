@@ -76,9 +76,7 @@ async fn main() -> anyhow::Result<()> {
     let tools = Arc::new(registry);
 
     let agent = Arc::new(Agent::new(provider, tools, approver, db.clone()));
-    //let agent_config = AgentConfig::new(model.clone());
-    let mut agent_config = AgentConfig::new(model.clone());
-    agent_config.budget.max_steps = 2;
+    let agent_config = AgentConfig::new(model.clone());
 
     let app = App::new(
         db.clone(),
