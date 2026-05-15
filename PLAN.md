@@ -23,6 +23,10 @@
 | D4 | Desktop-UI | **`ratatui` ab Phase 0 + `tauri` 2.0 parallel ab Phase 4** | TUI bleibt Dev-Werkzeug und Power-User-Interface. Tauri-App ab Multi-Channel-Phase für End-User-Demos. UI teilt sich Gateway/WebSocket-Backend (Phase 2+). |
 | D5 | Lokale Inferenz | **Erst ab Phase 3** | `mistral.rs` 0.7.x kommt mit Reasoning-Router (Phase 3.1). Phase 0–2: Cloud-only (Anthropic+OpenAI). |
 | D6 | MSRV | **Rust 1.91+ pinnen** | `rust-version = "1.91"` im Workspace. Begründung: transitiv via aws-smithy bei `lancedb` ≥0.20 (auch wenn lancedb nicht initialer Default ist, lassen wir den Pfad offen). |
+| D7 | Approval-UX (Phase 1) | **Inline-Modal y/n/a im TUI** | Bei Write/Exec-Tool pausiert der Loop, Overlay zeigt Tool-Name+Args. `y`=ja-diesmal, `n`=nein, `a`=Allowlist-Pattern fuer kuenftige Auto-Allow. `Esc` cancelt den Run. |
+| D8 | Memory-Crate (Phase 1) | **Neuer `crates/memory`** | Eigener Crate fuer Working/Episodic/Semantic/Procedural Memory (project.md §1.4). Phase 1 implementiert nur Semantic (Markdown-Files); Episodic kommt in Phase 2. |
+| D9 | Web-Tools (Phase 1) | **`web_fetch` only** | reqwest + HTML-to-Markdown fuer URL→Markdown, kein externer API-Key noetig. `web_search` verschiebt sich auf Phase 2 (ggf. via MCP-Server statt nativer Implementation). |
+| D10 | Cache-Tracking (Phase 1) | **`hit_rate` in Statuszeile** | `hit_rate = cache_read / (input + cache_read + cache_creation)` als 4. Wert in der TUI-Statusbar. PLAN.md Trigger `<60%` loest Warnung aus. |
 
 ---
 
@@ -56,24 +60,25 @@
 
 **Goal**: Lauffähiger ReAct-Agent mit nativen Tools, Markdown-Memory, Approval-Gate für Writes/Exec, sauberer Cancellation.
 
-**Abhängigkeit**: Phase 0 abgeschlossen.
+**Abhängigkeit**: Phase 0 abgeschlossen. Decisions [D7–D10] geklärt.
 
-### Tasks
-- [ ] **1.1** `core::loop` ReAct-Implementation (thought → action → observation) mit Hard-Cap 50 Steps + Token-Budget.
-- [ ] **1.2** `core::budget` (Step/Token/Cost-Limits) + `tokio::sync::CancellationToken` durch gesamten Loop.
-- [ ] **1.3** `tools`-Crate mit `Tool`-Trait inkl. `permission(): Read|Write|Exec` (project.md §1.11).
-- [ ] **1.4** Native Tools: `file_read`, `file_write`, `shell` (mit Approval), `web_search`, `web_fetch`, `session_search`, `memory_save`, `datetime`.
-- [ ] **1.5** Tool-Schemas via `schemars` ableiten, an LLM-Provider serialisieren (OpenAI/Anthropic-Format).
-- [ ] **1.6** Memory-Loader: `~/.ravn/{soul.md,memory.md,user.md}` ins System-Prompt einbinden (Cache-stabile Position).
+### Tasks (Ausfuehrungs-Reihenfolge)
+- [ ] **1.3** `crates/tools` skeleton mit `Tool`-Trait inkl. `permission(): Read|Write|Exec` (project.md §1.11). Schema-Generation via `schemars`.
+- [ ] **1.6** Neuer `crates/memory` ([D8]). Loader fuer `~/.ravn/{soul.md,memory.md,user.md}`. Working-/Episodic-Stubs leer (Phase 2).
 - [ ] **1.7** Hard-Limits: Memory-Total ≤ 3000 Tokens, Soul ≤ 800, User ≤ 500. Truncation mit Warning.
-- [ ] **1.8** Anthropic-Prompt-Caching durchgehend verifiziert (≥60 % Hit-Rate auf Second-Turn).
-- [ ] **1.9** Approval-UI in TUI: Modal mit „yes/no/allow-this-arg-pattern".
-- [ ] **1.10** Tool-Output-Wrapping in `<tool_result trustworthy="false">` für injection-mitigation.
+- [ ] **1.1** `core::loop` ReAct-Implementation (thought → action → observation) mit Hard-Cap 50 Steps + Token-Budget. Integriert llm + tools + memory.
+- [ ] **1.2** `core::budget` (Step/Token/Cost-Limits) + `tokio::sync::CancellationToken` durch gesamten Loop.
+- [ ] **1.4** Native Tools (7, [D9] ohne `web_search`): `file_read`, `file_write` (Write), `shell` (Exec), `web_fetch` (Read, via reqwest+html2md), `session_search` (Read, nutzt `ravn_persistence::messages::search`), `memory_save` (Write, MEMORY.md/USER.md append-or-update), `datetime` (Read).
+- [ ] **1.5** Tool-Schemas an llm-Provider serialisieren via `ToolSchema` (existing in `ravn_llm`).
+- [ ] **1.9** Approval-UI in TUI ([D7]): Inline-Modal mit `y`/`n`/`a` (Allowlist). `Esc` cancelt den Run. Allowlist persistiert in DB.
+- [ ] **1.10** Tool-Output-Wrapping in `<tool_result trustworthy="false">…</tool_result>` fuer Prompt-Injection-Mitigation (untrusted outputs).
+- [ ] **1.8** Cache-Hit-Rate-Tracking ([D10]): pro Session aggregieren, in Statuszeile als 4. Wert anzeigen, `<60%` triggert Warn-Log.
+- [ ] **1.11** Acceptance-Smoketest end-to-end: Multi-Step-Task laeuft, cancellation funktioniert, cache_read>0 auf zweitem Turn.
 
 ### Akzeptanzkriterien
-- Multi-Step-Task wie „search web for X, save summary to file" läuft end-to-end.
+- Multi-Step-Task wie „search web for X, save summary to file" läuft end-to-end (mit `web_fetch` statt `web_search`).
 - Cancel-Button in TUI bricht Loop binnen 100 ms ab.
-- Approval-Modal erscheint bei `shell` und `file_write`, nicht bei `file_read`/`web_search`.
+- Approval-Modal erscheint bei `shell`/`file_write`/`memory_save`, nicht bei `file_read`/`web_fetch`/`session_search`/`datetime`.
 - Re-Run identischer Conversation zeigt Cache-Hit ≥ 60 %.
 - Trajectory-Log: jede ReAct-Iteration als Event mit `(thought, action, observation)` in `events`-Tabelle.
 
