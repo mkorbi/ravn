@@ -10,6 +10,7 @@
 //! tokens as they arrive. Tool-use blocks are buffered and dispatched
 //! at the end of the assistant turn.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use futures::StreamExt;
@@ -326,6 +327,13 @@ impl Agent {
         let mut thinking = String::new();
         let mut current_tool: Option<ToolBuf> = None;
         let mut completed_tools: Vec<ContentBlock> = Vec::new();
+        // Defense-in-depth dedup: adapters should not emit two
+        // ToolUseStart/End pairs for the same provider tool id, but if
+        // they do (e.g. rig emits both ToolCallDelta + final ToolCall
+        // for Anthropic), we still drop the duplicate here so the next
+        // model turn doesn't fail the "tool_use ids must be unique"
+        // server-side check.
+        let mut seen_tool_ids: HashSet<String> = HashSet::new();
         let mut usage: Option<Usage> = None;
 
         loop {
@@ -346,13 +354,25 @@ impl Agent {
                         }
                         StreamChunk::ToolUseStart { id, name } => {
                             if let Some(prev) = current_tool.take() {
-                                completed_tools.push(finalize_tool(prev));
+                                push_unique_tool(
+                                    &mut completed_tools,
+                                    &mut seen_tool_ids,
+                                    finalize_tool(prev),
+                                );
                             }
-                            current_tool = Some(ToolBuf {
-                                id,
-                                name,
-                                json: String::new(),
-                            });
+                            if seen_tool_ids.contains(&id) {
+                                // We've already finalized this id —
+                                // ignore the duplicate Start so the
+                                // following Delta/End updates are
+                                // discarded too.
+                                current_tool = None;
+                            } else {
+                                current_tool = Some(ToolBuf {
+                                    id,
+                                    name,
+                                    json: String::new(),
+                                });
+                            }
                         }
                         StreamChunk::ToolUseDelta { partial_json } => {
                             if let Some(t) = current_tool.as_mut() {
@@ -361,7 +381,11 @@ impl Agent {
                         }
                         StreamChunk::ToolUseEnd => {
                             if let Some(t) = current_tool.take() {
-                                completed_tools.push(finalize_tool(t));
+                                push_unique_tool(
+                                    &mut completed_tools,
+                                    &mut seen_tool_ids,
+                                    finalize_tool(t),
+                                );
                             }
                         }
                         StreamChunk::Usage(u) => {
@@ -373,7 +397,11 @@ impl Agent {
             }
         }
         if let Some(t) = current_tool.take() {
-            completed_tools.push(finalize_tool(t));
+            push_unique_tool(
+                &mut completed_tools,
+                &mut seen_tool_ids,
+                finalize_tool(t),
+            );
         }
 
         let mut blocks = Vec::new();
@@ -408,6 +436,20 @@ fn finalize_tool(t: ToolBuf) -> ContentBlock {
         id: t.id,
         name: t.name,
         input,
+    }
+}
+
+fn push_unique_tool(
+    completed: &mut Vec<ContentBlock>,
+    seen: &mut HashSet<String>,
+    block: ContentBlock,
+) {
+    if let ContentBlock::ToolUse { id, .. } = &block {
+        if seen.insert(id.clone()) {
+            completed.push(block);
+        } else {
+            tracing::warn!(tool_id = %id, "dropped duplicate tool_use block from stream");
+        }
     }
 }
 

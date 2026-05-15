@@ -87,64 +87,95 @@ cargo run --release -p ravn-cli
 Nutze ein zweites Terminal für SQLite-Verifikation. Markiere bestandene Punkte mit `[x]`.
 
 **A — Startup & UI**
-- [ ] TUI öffnet (alternate screen), Scrollback leer, Statuszeile zeigt `session <id> │ in 0 out 0 cache_r 0 hit  -- │ $0.0000`
-- [ ] Tippen erscheint live in Input-Pane
+- [X] TUI öffnet (alternate screen), Scrollback leer, Statuszeile zeigt `session <id> │ in 0 out 0 cache_r 0 hit  -- │ $0.0000`
+- [X] Tippen erscheint live in Input-Pane
 
 **B — Plain Chat (Regression aus Phase 0)**
-- [ ] Eingabe `hi` + Enter → Antwort streamt in
-- [ ] Cursor `▌` während streaming sichtbar, verschwindet bei Done
-- [ ] Statuszeile zeigt nach Antwort: `in > 0`, `out > 0`, `$` mit positivem Betrag
+- [X] Eingabe `hi` + Enter → Antwort streamt in
+- [X] Cursor `▌` während streaming sichtbar, verschwindet bei Done
+- [X] Statuszeile zeigt nach Antwort: `in > 0`, `out > 0`, `$` mit positivem Betrag
 
 **C — Read-Tool ohne Approval** (`datetime`)
 - [ ] Eingabe: `What is today's date in Berlin?` → Assistant ruft `datetime` (siehe dim Zeile `🔎 datetime {…}` im Scrollback), KEIN Modal
 - [ ] Ergebnis-Zeile `  ✓ datetime: 2026-…` erscheint
 - [ ] Endgültige Antwort enthält aktuelles Datum
+Test dailed with: error: llm: provider anthropic returned 400: ProviderError: SSE Error: Invalid status code│
+│400 Bad Request with message:                                                             │
+│{"type":"error","error":{"type":"invalid_request_error","message":"messages.3.content.1:  │
+│`tool_use` ids must be unique"},"request_id":"req_011Cb4iHgzXnEXroppGnqxBE"}
+But then after the next input it shows datetime correctly
 
 **D — Write-Tool mit Approval-Modal** (`file_write`)
-- [ ] Eingabe: `Write the word "test" to /tmp/ravn_test.txt`
-- [ ] Modal erscheint, zentriert, mit Tool=`file_write`, Permission=`WRITE` (gelb), Args pretty-printed, Hint-Zeile
-- [ ] Eingabe ohne Modal blockiert (`> `-Prompt zeigt `(approval needed)`)
-- [ ] `y` → Modal verschwindet, dim Zeile `✓ file_write: wrote 4 bytes …`
-- [ ] `cat /tmp/ravn_test.txt` → `test`
+- [X] Eingabe: `Write the word "test" to /tmp/ravn_test.txt`
+- [X] Modal erscheint, zentriert, mit Tool=`file_write`, Permission=`WRITE` (gelb), Args pretty-printed, Hint-Zeile
+- [X] Eingabe ohne Modal blockiert (`> `-Prompt zeigt `(approval needed)`)
+- [X] `y` → Modal verschwindet, dim Zeile `✓ file_write: wrote 4 bytes …`
+- [X] `cat /tmp/ravn_test.txt` → `test`
+I get an error: error: llm: provider anthropic returned 400: ProviderError: SSE Error: Invalid status code
 
 **E — Modal denial**
-- [ ] Wieder: `Write "abc" to /tmp/ravn_deny.txt`
-- [ ] Modal → `n` → dim Zeile `denied: file_write` (gelb)
-- [ ] Datei `/tmp/ravn_deny.txt` existiert **nicht**
-- [ ] Assistant-Antwort sollte erkennen, dass das Tool verweigert wurde
+- [X] Wieder: `Write "abc" to /tmp/ravn_deny.txt`
+- [X] Modal → `n` → dim Zeile `denied: file_write` (gelb)
+- [X] Datei `/tmp/ravn_deny.txt` existiert **nicht**
+- [X] Assistant-Antwort sollte erkennen, dass das Tool verweigert wurde
 
 **F — Modal cancel mit Esc**
-- [ ] Eingabe: `Write "x" to /tmp/ravn_esc.txt`
-- [ ] Modal → `Esc` → ganzer Run bricht ab, `error: cancelled` (rot) im Scrollback
-- [ ] Datei `/tmp/ravn_esc.txt` existiert **nicht**
+- [X] Eingabe: `Write "x" to /tmp/ravn_esc.txt`
+- [X] Modal → `Esc` → ganzer Run bricht ab, `error: cancelled` (rot) im Scrollback
+- [X] Datei `/tmp/ravn_esc.txt` existiert **nicht**
 
 **G — Exec-Tool mit Approval** (`shell`)
-- [ ] Eingabe: `Run "echo hello world" via shell`
-- [ ] Modal mit Permission=`EXEC` (rot)
-- [ ] `y` → Tool läuft, dim Zeile zeigt `✓ shell: exit=0` (excerpt)
-- [ ] Assistant repräsentiert das Output korrekt
+- [x] Eingabe: `Run "echo hello world" via shell`
+- [x] Modal mit Permission=`EXEC` (rot)
+- [x] `y` → Tool läuft, dim Zeile zeigt `✓ shell: exit=0` (excerpt)
+- [x] Assistant repräsentiert das Output korrekt
 
 **H — Allowlist (`a`-Taste)**
-- [ ] Eingabe: `Run "uname -s" via shell`
-- [ ] Modal → `a` → Tool läuft
-- [ ] Direkt danach: `Run "whoami" via shell` → **kein** Modal, Tool läuft direkt
-- [ ] Allowlist gilt nur in dieser Session (neu starten → wieder Modal)
+- [x] Eingabe: `Run "uname -s" via shell`
+- [x] Modal → `a` → Tool läuft
+- [x] Direkt danach: `Run "whoami" via shell` → **kein** Modal, Tool läuft direkt
+- [x] Allowlist gilt nur in dieser Session (neu starten → wieder Modal)
+
+Error, for some reason every input looks like is running twice, also the apporval via modal winfows: you:                                                                                      │
+│Run "whoami" via shell                                                                    │
+│                                                                                          │
+│ravn:                                                                                     │
+│Sure!                                                                                     │
+│                                                                                          │
+│⚙ shell {"command":"whoami"}                                                              │
+│                                                                                          │
+│  ✓ shell: exit=0                                                                         │
+│                                                                                          │
+│⚙ shell {"command":"whoami"}                                                              │
+│                                                                                          │
+│  ✓ shell: exit=0
 
 **I — Esc cancel während streaming**
-- [ ] Eingabe: `Write me a 500-word essay about Rust ownership`
-- [ ] Sobald Tokens reinkommen → `Esc` → Loop bricht ab in <1s
-- [ ] Statuszeile: keine weitere Token-Erhöhung
+- [X] Eingabe: `Write me a 500-word essay about Rust ownership`
+- [X] Sobald Tokens reinkommen → `Esc` → Loop bricht ab in <1s
+- [X] Statuszeile: keine weitere Token-Erhöhung
 
 **J — Untrusted-Source wrap** (`web_fetch`)
-- [ ] Eingabe: `Fetch https://example.com and tell me what it says`
-- [ ] `web_fetch` läuft (kein Modal — Read-Permission)
-- [ ] Assistant sollte sich darauf beziehen, dass der Inhalt aus externer Quelle stammt
+- [X] Eingabe: `Fetch https://example.com and tell me what it says`
+- [X] `web_fetch` läuft (kein Modal — Read-Permission)
+- [X] Assistant sollte sich darauf beziehen, dass der Inhalt aus externer Quelle stammt
 - [ ] Verifikation: `sqlite3 "$DB" "SELECT content FROM messages WHERE role='user' ORDER BY id DESC LIMIT 1;"` → enthält `<tool_result trustworthy="false">`
+Return: ravn:                                                                                     │
+│It looks like you're running a SQLite query to fetch the most recent user message from a  │
+│`messages` table. Want me to run that for you? If so, I'd need to know:                   │
+│                                                                                          │
+│1. **The path to your database file** — what should `$DB` be?                             │
+│                                                                                          │
+│Or if you're just sharing the command for reference, what are you trying to accomplish?   │
+│I'm happy to help with:                                                                   │
+│                                                                                          │
+│- **Running the query** against a specific DB file
 
 **K — Multi-Step Task** (das Big-Acceptance-Item aus PLAN.md)
-- [ ] Eingabe: `Fetch https://example.com and save the page title to /tmp/ravn_title.txt`
-- [ ] Erwarteter Toolchain: `web_fetch` → (Approval-Modal für) `file_write` → final
+- [X] Eingabe: `Fetch https://example.com and save the page title to /tmp/ravn_title.txt`
+- [X] Erwarteter Toolchain: `web_fetch` → (Approval-Modal für) `file_write` → final
 - [ ] `cat /tmp/ravn_title.txt` enthält `Example Domain` o.ä.
+error:  ✗ file_read: io: /tmp/ravn_title.txt: No such file or directory (os error 2)
 
 **L — Persistence-Verifikation**
 ```bash
@@ -159,29 +190,30 @@ SQL
 - [ ] `events`: `react.tool.start`, `react.tool.end`, `react.done`, `llm.request`/`llm.response` falls noch vorhanden
 
 **M — Cache-Hit-Rate ≥ 60%** (PLAN.md Threshold)
-- [ ] **Erste Session beenden** (Ctrl-C bei leerem Input → quit)
-- [ ] **Neue Session starten**: `cargo run --release -p ravn-cli`
-- [ ] Genau **dieselbe** erste User-Eingabe wie in vorheriger Session
-- [ ] Nach Antwort: Statuszeile `cache_r > 0`, `hit XX%` mit `XX ≥ 60`
+- [x] **Erste Session beenden** (Ctrl-C bei leerem Input → quit)
+- [X] **Neue Session starten**: `cargo run --release -p ravn-cli`
+- [X] Genau **dieselbe** erste User-Eingabe wie in vorheriger Session
+- [X] Nach Antwort: Statuszeile `cache_r > 0`, `hit XX%` mit `XX ≥ 60`
 - [ ] Bei `< 60%`: → in `~/Library/Application Support/ravn/ravn.log` sollte `WARN … cache hit-rate below 60%` stehen
 
 **N — Memory-Loader** (Phase 1.6/1.7)
-- [ ] Beende die TUI
-- [ ] Schreibe Test-Memory:
+- [X] Beende die TUI
+- [X] Schreibe Test-Memory:
   ```bash
   mkdir -p ~/Library/Application\ Support/ravn
   echo "Max prefers German for explanations." > ~/Library/Application\ Support/ravn/user.md
   echo "I am ravn." > ~/Library/Application\ Support/ravn/soul.md
   ```
-- [ ] Starte TUI neu, frage: `What do you know about me?`
-- [ ] Antwort sollte auf German/Max referenzieren (Identifier aus user.md)
+- [X] Starte TUI neu, frage: `What do you know about me?`
+- [X] Antwort sollte auf German/Max referenzieren (Identifier aus user.md)
 - [ ] Hard-Limits-Check: schreibe sehr lange user.md (`>2000 chars`), starte neu → `ravn.log` sollte `WARN … user.md truncated to 500-token cap` enthalten
 
 **O — Budget-Cap**
-- [ ] In `crates/core/src/agent.rs::AgentConfig::new`, max_steps temporär auf 2 setzen (oder per env-var falls implementiert)
-- [ ] Eingabe die mehrere Tool-Schritte braucht: `Run "ls /" then "ls /tmp" then "ls /etc" via shell`
-- [ ] Loop terminiert mit `error: budget exceeded: max_steps` nach 2 Steps
-- [ ] AgentConfig wieder zurücksetzen
+- [X] In `crates/core/src/agent.rs::AgentConfig::new`, max_steps temporär auf 2 setzen (oder per env-var falls implementiert)
+- [X] Eingabe die mehrere Tool-Schritte braucht: `Run "ls /" then "ls /tmp" then "ls /etc" via shell`
+- [X] Loop terminiert mit `error: budget exceeded: max_steps` nach 2 Steps
+- [X] AgentConfig wieder zurücksetzen
+Error in test, you mean max_tokens?
 
 ### Akzeptanzkriterien (Pass-Fail Phase 1)
 

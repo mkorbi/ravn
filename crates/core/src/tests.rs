@@ -354,6 +354,83 @@ async fn budget_max_steps_trips() {
 }
 
 #[tokio::test]
+async fn duplicate_tool_use_id_in_stream_is_deduped() {
+    // Reproduces the Anthropic-streaming bug: rig emits ToolCallDelta
+    // (Start + Delta) AND a final ToolCall for the same provider id,
+    // which historically produced two ContentBlock::ToolUse blocks
+    // with identical ids and made the next-turn API call fail with
+    // "tool_use ids must be unique" (and also ran the tool twice).
+    let mut tools = ToolRegistry::new();
+    tools.register(AddTool);
+
+    let scripts = vec![
+        // First turn: stream emits Start+Delta+End for "add" (the
+        // delta path), then Start+Delta+End again for the SAME id
+        // (the final-ToolCall path). Both with id "toolu_dup".
+        vec![
+            StreamChunk::ToolUseStart {
+                id: "toolu_dup".into(),
+                name: "add".into(),
+            },
+            StreamChunk::ToolUseDelta {
+                partial_json: r#"{"a":2,"b":3}"#.into(),
+            },
+            StreamChunk::ToolUseEnd,
+            StreamChunk::ToolUseStart {
+                id: "toolu_dup".into(),
+                name: "add".into(),
+            },
+            StreamChunk::ToolUseDelta {
+                partial_json: r#"{"a":2,"b":3}"#.into(),
+            },
+            StreamChunk::ToolUseEnd,
+            StreamChunk::Done {
+                finish_reason: FinishReason::ToolUse,
+            },
+        ],
+        vec![
+            StreamChunk::TextDelta("5".into()),
+            StreamChunk::Done {
+                finish_reason: FinishReason::Stop,
+            },
+        ],
+    ];
+
+    let (agent, ctx, cfg, cancel) = harness(scripts, tools, Arc::new(AllowAll)).await;
+    let (tx, mut rx) = mpsc::channel(64);
+    let sink = Arc::new(ChannelSink::new(tx));
+
+    let summary = agent.run(&cfg, ctx, sink, cancel).await.unwrap();
+
+    // The tool must have run exactly once even though the stream
+    // contained a duplicate Start/End pair for the same id.
+    let events = collect_recv(&mut rx).await;
+    let tool_ends: usize = events
+        .iter()
+        .filter(|e| matches!(e, LoopEvent::ToolEnd { name, .. } if name == "add"))
+        .count();
+    assert_eq!(tool_ends, 1, "tool ran more than once on duplicate stream");
+
+    // And the assistant message in history must have a single
+    // ContentBlock::ToolUse with that id — the Anthropic API would
+    // reject anything else on the next turn.
+    let assistant_msg = summary
+        .history
+        .iter()
+        .find(|m| m.role == Role::Assistant)
+        .expect("assistant message in history");
+    let tool_use_count = assistant_msg
+        .content
+        .iter()
+        .filter(|b| matches!(b, ContentBlock::ToolUse { id, .. } if id == "toolu_dup"))
+        .count();
+    assert_eq!(
+        tool_use_count, 1,
+        "history contains duplicate tool_use blocks with same id"
+    );
+}
+
+#[tokio::test]
 async fn cancellation_terminates_loop() {
     let scripts = vec![vec![
         StreamChunk::TextDelta("hi".into()),
