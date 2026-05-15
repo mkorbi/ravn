@@ -12,10 +12,15 @@
 pub mod anthropic;
 pub mod message;
 pub mod openai;
+pub mod pricing;
+pub mod prompt;
 pub mod provider;
 pub mod request;
 pub mod response;
 pub(crate) mod rig_bridge;
+
+pub use pricing::cost as compute_cost;
+pub use prompt::PromptBuilder;
 
 pub use message::{ContentBlock, Message, Role};
 pub use provider::{Error, LlmProvider};
