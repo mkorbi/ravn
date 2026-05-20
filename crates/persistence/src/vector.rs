@@ -24,7 +24,12 @@ use crate::db::Db;
 use crate::error::Error;
 
 /// Must match `ravn_embeddings::EMBEDDING_DIM`. Asserted at insert time.
-pub const EMBEDDING_DIM: usize = 1024;
+///
+/// D12-Revision 2026-05-20: 1024 → 768 (Qwen3 → EmbeddingGemma-300M).
+/// Existing DBs that were bootstrapped with the old dim get dropped +
+/// recreated on next [`bootstrap`] call (no real users had vec data
+/// yet — Block F of the Phase 2 smoketest never ran end-to-end).
+pub const EMBEDDING_DIM: usize = 768;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VecTable {
@@ -70,9 +75,14 @@ fn ensure_extension_registered() {
     });
 }
 
-/// Idempotent `CREATE VIRTUAL TABLE IF NOT EXISTS` for both vec tables.
-/// Called from [`Db::open`]; no-op for `:memory:` (rusqlite can't share
-/// the sqlx in-memory DB, so vec ops are unsupported there).
+/// Idempotent setup of both vec tables. Called from [`Db::open`];
+/// no-op for `:memory:` (rusqlite can't share the sqlx in-memory DB,
+/// so vec ops are unsupported there).
+///
+/// If a vec table exists with the wrong embedding dim (e.g. an older
+/// ravn DB created when [`EMBEDDING_DIM`] was 1024), it is dropped and
+/// recreated at the current dim. Existing rows are lost — they'd be
+/// useless against the new embedding model anyway.
 pub(crate) async fn bootstrap(db: &Db) -> Result<(), Error> {
     let path = db.path.clone();
     if path.as_os_str() == ":memory:" {
@@ -81,15 +91,45 @@ pub(crate) async fn bootstrap(db: &Db) -> Result<(), Error> {
     tokio::task::spawn_blocking(move || -> Result<(), Error> {
         ensure_extension_registered();
         let conn = Connection::open(&path)?;
-        conn.execute_batch(&format!(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS messages_vec USING vec0(embedding float[{dim}]);
-             CREATE VIRTUAL TABLE IF NOT EXISTS skills_vec   USING vec0(embedding float[{dim}]);",
-            dim = EMBEDDING_DIM
-        ))?;
+        for table in ["messages_vec", "skills_vec"] {
+            recreate_if_dim_mismatch(&conn, table)?;
+            conn.execute_batch(&format!(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS {table} USING vec0(embedding float[{dim}]);",
+                dim = EMBEDDING_DIM
+            ))?;
+        }
         Ok(())
     })
     .await
     .map_err(|e| Error::Join(e.to_string()))?
+}
+
+/// If `<table>` exists with an embedding dim different from
+/// [`EMBEDDING_DIM`], drop it. The caller then recreates it at the
+/// current dim. sqlite-vec stores the dim in the `CREATE` statement
+/// (visible via `sqlite_schema.sql`).
+fn recreate_if_dim_mismatch(conn: &Connection, table: &str) -> Result<(), Error> {
+    let existing: Option<String> = conn
+        .query_row(
+            "SELECT sql FROM sqlite_schema WHERE type='table' AND name=?1",
+            [table],
+            |row| row.get(0),
+        )
+        .ok();
+    let Some(sql) = existing else {
+        return Ok(());
+    };
+    let expected = format!("float[{}]", EMBEDDING_DIM);
+    if !sql.contains(&expected) {
+        tracing::info!(
+            table,
+            existing = %sql,
+            new_dim = EMBEDDING_DIM,
+            "vec table dim mismatch — dropping and recreating"
+        );
+        conn.execute_batch(&format!("DROP TABLE {table};"))?;
+    }
+    Ok(())
 }
 
 /// Insert (or replace) one embedding row for `table` at `rowid`.
@@ -303,6 +343,12 @@ mod tests {
         let err = insert(&db, VecTable::Messages, 1, &[0.1, 0.2, 0.3])
             .await
             .unwrap_err();
-        assert!(matches!(err, Error::WrongDim { expected: 1024, actual: 3 }));
+        assert!(matches!(
+            err,
+            Error::WrongDim {
+                expected: EMBEDDING_DIM,
+                actual: 3
+            }
+        ));
     }
 }

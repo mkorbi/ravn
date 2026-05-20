@@ -77,9 +77,9 @@ sqlite3 -header -column \
 ```
 
 Pass-Kriterien:
-- [ ] 3 Rows: `git-workflow`, `note-taking`, `web-research`
-- [ ] Jede `body_bytes` > 500 (die SKILL.md-Bodies sind nicht-trivial)
-- [ ] `body_hash` ist ein 64-stelliger Hex-String
+- [x] 3 Rows: `git-workflow`, `note-taking`, `web-research`
+- [x] Jede `body_bytes` > 500 (die SKILL.md-Bodies sind nicht-trivial)
+- [x] `body_hash` ist ein 64-stelliger Hex-String
 
 ```bash
 # Re-Sync-Test: Re-Run ravn (Ctrl-C im 1. Terminal, dann `cargo run` erneut).
@@ -98,9 +98,9 @@ List the skills you have available
 ```
 
 Pass-Kriterien:
-- [ ] Dim-Zeile `🔎 skill_list {}` im Scrollback (kein Modal)
-- [ ] Dim-Zeile `✓ skill_list: 3 skill(s):` folgt
-- [ ] Assistant zählt `git-workflow`, `note-taking`, `web-research` mit Beschreibung auf
+- [x] Dim-Zeile `🔎 skill_list {}` im Scrollback (kein Modal)
+- [x] Dim-Zeile `✓ skill_list: 3 skill(s):` folgt
+- [x] Assistant zählt `git-workflow`, `note-taking`, `web-research` mit Beschreibung auf
 
 ---
 
@@ -112,9 +112,9 @@ Show me the full git-workflow skill
 ```
 
 Pass-Kriterien:
-- [ ] Dim-Zeile `🔎 skill_view {"name":"git-workflow"}`
-- [ ] Dim-Zeile `✓ skill_view: # git-workflow (skill) …`
-- [ ] Assistant referenziert den Body inhaltlich (z.B. die "Safety rules"-Section)
+- [x] Dim-Zeile `🔎 skill_view {"name":"git-workflow"}`
+- [x] Dim-Zeile `✓ skill_view: # git-workflow (skill) …`
+- [x] Assistant referenziert den Body inhaltlich (z.B. die "Safety rules"-Section)
 
 ---
 
@@ -124,8 +124,8 @@ Erste Session in **TUI**:
 ```
 Write "test1" to /tmp/ravn_allow.txt
 ```
-- [ ] Approval-Modal kommt → `a` (allow always)
-- [ ] Tool läuft, Datei wird geschrieben
+- [x] Approval-Modal kommt → `a` (allow always)
+- [x] Tool läuft, Datei wird geschrieben
 
 Im **zweiten Terminal**:
 ```bash
@@ -143,8 +143,8 @@ In der neuen TUI:
 ```
 Write "test2" to /tmp/ravn_allow2.txt
 ```
-- [ ] **Kein** Approval-Modal — `file_write` läuft direkt durch (Allowlist persistiert)
-- [ ] `cat /tmp/ravn_allow2.txt` zeigt `test2`
+- [x] **Kein** Approval-Modal — `file_write` läuft direkt durch (Allowlist persistiert)
+- [x] `cat /tmp/ravn_allow2.txt` zeigt `test2`
 
 ---
 
@@ -157,7 +157,7 @@ In **TUI**:
 ```
 Tell me three interesting facts about marine biology
 ```
-- [ ] Antwort streamt durch wie gewohnt
+- [x] Antwort streamt durch wie gewohnt
 
 Im **zweiten Terminal**, nach ein paar Sekunden:
 ```bash
@@ -186,8 +186,8 @@ In **TUI**:
 ```
 List the tools you have available
 ```
-- [ ] Antwort enthält native Tools (file_read, shell, etc.)
-- [ ] Antwort enthält MCP-Tools mit Präfix `filesystem__` (z.B. `filesystem__read_file`, `filesystem__write_file`)
+- [x] Antwort enthält native Tools (file_read, shell, etc.)
+- [x] Antwort enthält MCP-Tools mit Präfix `filesystem__` (z.B. `filesystem__read_file`, `filesystem__write_file`)
 
 ---
 
@@ -197,8 +197,8 @@ In **TUI**:
 ```
 Use filesystem__list_directory to list /tmp
 ```
-- [ ] Approval-Modal kommt (permission=write aus der Config triggert es)
-- [ ] `y` → Tool läuft, gibt Verzeichnis-Listing zurück
+- [x] Approval-Modal kommt (permission=write aus der Config triggert es)
+- [x] `y` → Tool läuft, gibt Verzeichnis-Listing zurück
 - [ ] Assistant fasst sinnvoll zusammen
 
 ```
@@ -239,9 +239,9 @@ I just made some changes to my repo and want to commit them. What's the safe way
 ```
 
 Erwartet:
-- [ ] Assistant ruft `skill_list` mit Filter wie `commit` oder `git` (optional)
-- [ ] Oder direkt `skill_view {"name":"git-workflow"}`
-- [ ] Antwort spiegelt die "Safety rules" + "Standard commit flow"-Inhalte aus der SKILL.md (z.B. erwähnt `git status` zuerst, conventional-commit-Format, kein `--no-verify`)
+- [X] Assistant ruft `skill_list` mit Filter wie `commit` oder `git` (optional)
+- [X] Oder direkt `skill_view {"name":"git-workflow"}`
+- [X] Antwort spiegelt die "Safety rules" + "Standard commit flow"-Inhalte aus der SKILL.md (z.B. erwähnt `git status` zuerst, conventional-commit-Format, kein `--no-verify`)
 
 Falls Assistant die Skills nicht von selbst aufruft: explizit anstoßen:
 ```
@@ -263,9 +263,9 @@ sqlite3 -header -column \
 ```
 
 Pass-Kriterien:
-- [ ] `react.tool.start` und `react.tool.end` mit gleicher Anzahl (sofern keine Tool-Crashes)
-- [ ] `react.done` pro abgeschlossenem Run einmal
-- [ ] `n` für `react.tool.*` ist > 5 (du hast viele Tool-Calls durchlaufen)
+- [x] `react.tool.start` und `react.tool.end` mit gleicher Anzahl (sofern keine Tool-Crashes)
+- [x] `react.done` pro abgeschlossenem Run einmal
+- [x] `n` für `react.tool.*` ist > 5 (du hast viele Tool-Calls durchlaufen)
 
 ---
 

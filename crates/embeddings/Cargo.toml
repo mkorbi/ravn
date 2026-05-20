@@ -13,7 +13,7 @@ async-trait.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
-# Qwen3-Embedding-0.6B via candle backend (D12).
-fastembed = { version = "5", features = ["qwen3", "hf-hub"] }
-candle-core = "0.10"
+# EmbeddingGemma-300M via ONNX-Runtime (D12, revised 2026-05-20).
+# Default fastembed features cover ONNX + hf-hub; no candle backend.
+fastembed = "5"
 parking_lot = "0.12"

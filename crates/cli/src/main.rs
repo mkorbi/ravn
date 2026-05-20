@@ -76,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
     // Shared text-embedder for the agent's message persistence + the
     // session_search tool's hybrid mode. Lazy-loads Qwen3 on first use
     // (no startup cost if the user never triggers a search).
-    let embedder = Arc::new(Embedder::default_qwen3());
+    let embedder = Arc::new(Embedder::default_gemma());
 
     // Sync skills from ~/.ravn/skills/ into the DB mirror at startup
     // (Phase 2.4/2.5). Embeddings happen fire-and-forget — the

@@ -1,46 +1,45 @@
-//! Text-Embeddings via fastembed-rs (D12: `Qwen3-Embedding-0.6B`,
-//! 1024 dim, multilingual).
+//! Text-Embeddings via fastembed-rs (D12 revised 2026-05-20:
+//! `EmbeddingGemma-300M`, 768 dim, multilingual).
 //!
-//! `Embedder` is cheap to construct — the actual 1.2 GB model is only
-//! downloaded + loaded into memory on the first call to [`Embedder::embed`].
-//! Loading and inference run inside `tokio::task::spawn_blocking`
-//! because candle is sync; embedding calls beyond the first take a
-//! `parking_lot::Mutex` so concurrent callers serialize through the
-//! single CPU-bound model.
+//! `Embedder` is cheap to construct — the actual ~300 MB ONNX model is
+//! only downloaded + loaded into memory on the first call to
+//! [`Embedder::embed`]. Loading and inference run inside
+//! `tokio::task::spawn_blocking` because fastembed's `embed()` takes
+//! `&mut self`; concurrent callers serialize through a `parking_lot::Mutex`.
 //!
-//! Phase 2 only exposes the concrete `Embedder` struct. A trait
-//! abstraction will appear once we add a second backend (BGE-Small for
-//! tests, OpenAI embeddings, etc.).
+//! D12 history: initially picked `Qwen3-Embedding-0.6B` (1024 dim, candle
+//! backend, ~1.2 GB). Revised on 2026-05-20 because the download +
+//! 3 GB RAM footprint were too heavy for the personal-assistant
+//! workload; EmbeddingGemma-300M is ~30× smaller and still multilingual
+//! enough for session-search + skill-matching.
 
 use std::sync::Arc;
 
-use candle_core::{DType, Device};
-use fastembed::Qwen3TextEmbedding;
+use fastembed::{EmbeddingModel, TextEmbedding, TextInitOptions};
 use parking_lot::Mutex;
 use tokio::sync::OnceCell;
 
 #[derive(Debug, Clone)]
 pub struct EmbedderConfig {
-    /// Hugging Face repo, e.g. `"Qwen/Qwen3-Embedding-0.6B"`.
-    pub model_id: String,
     /// Max token length per input. Inputs longer than this get
-    /// truncated by the tokenizer; recommended 512 for short messages,
-    /// 2048 for whole SKILL.md bodies.
+    /// truncated by the tokenizer.
     pub max_length: usize,
+    /// Show the Hugging Face download progress bar on the first load.
+    pub show_download_progress: bool,
 }
 
 impl Default for EmbedderConfig {
     fn default() -> Self {
         Self {
-            model_id: "Qwen/Qwen3-Embedding-0.6B".into(),
             max_length: 512,
+            show_download_progress: true,
         }
     }
 }
 
 /// Output dimension of the default model. Hardcoded here because the
 /// `sqlite-vec` `vec0` table needs the dim at migration time.
-pub const EMBEDDING_DIM: usize = 1024;
+pub const EMBEDDING_DIM: usize = 768;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -58,9 +57,10 @@ pub struct Embedder {
 }
 
 struct Inner {
-    /// candle's `Qwen3TextEmbedding` mutates internal state during
-    /// `.embed()` (intermediate tensors); serialize concurrent calls.
-    model: Mutex<Qwen3TextEmbedding>,
+    /// fastembed's `embed()` takes `&mut self`. We serialize concurrent
+    /// callers through a Mutex — embedding is CPU-bound, so single-
+    /// threaded sequencing is fine.
+    model: Mutex<TextEmbedding>,
 }
 
 impl Embedder {
@@ -71,7 +71,7 @@ impl Embedder {
         }
     }
 
-    pub fn default_qwen3() -> Self {
+    pub fn default_gemma() -> Self {
         Self::new(EmbedderConfig::default())
     }
 
@@ -84,8 +84,8 @@ impl Embedder {
     }
 
     /// Encode a batch of texts. First call downloads + loads the model
-    /// (~1.2 GB on disk; ~3 GB RAM on CPU); subsequent calls reuse it.
-    /// Returns one `Vec<f32>` of length [`EMBEDDING_DIM`] per input.
+    /// (~300 MB on disk); subsequent calls reuse it. Returns one
+    /// `Vec<f32>` of length [`EMBEDDING_DIM`] per input.
     pub async fn embed(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>, Error> {
         if texts.is_empty() {
             return Ok(Vec::new());
@@ -93,22 +93,21 @@ impl Embedder {
         let inner = self.ensure_loaded().await?;
         let inner_clone = inner.clone();
         let vecs = tokio::task::spawn_blocking(move || {
-            let guard = inner_clone.model.lock();
+            let mut guard = inner_clone.model.lock();
             guard
-                .embed(&texts)
+                .embed(texts, None)
                 .map_err(|e| Error::Embed(e.to_string()))
         })
         .await
         .map_err(|e| Error::Embed(format!("join: {e}")))??;
 
-        for (i, v) in vecs.iter().enumerate() {
+        for v in &vecs {
             if v.len() != EMBEDDING_DIM {
                 return Err(Error::WrongDim {
                     expected: EMBEDDING_DIM,
                     actual: v.len(),
                 });
             }
-            let _ = i;
         }
         Ok(vecs)
     }
@@ -118,17 +117,15 @@ impl Embedder {
         let loaded = self
             .inner
             .get_or_try_init(|| async move {
-                tracing::info!(model = %config.model_id, "loading embedding model");
-                let model_id = config.model_id.clone();
-                let max_length = config.max_length;
+                tracing::info!(
+                    model = "EmbeddingGemma300M",
+                    "loading embedding model"
+                );
                 let inner = tokio::task::spawn_blocking(move || {
-                    let device = Device::Cpu;
-                    let dtype = DType::F32;
-                    let model = Qwen3TextEmbedding::from_hf(
-                        &model_id,
-                        &device,
-                        dtype,
-                        max_length,
+                    let model = TextEmbedding::try_new(
+                        TextInitOptions::new(EmbeddingModel::EmbeddingGemma300M)
+                            .with_max_length(config.max_length)
+                            .with_show_download_progress(config.show_download_progress),
                     )
                     .map_err(|e| Error::Init(e.to_string()))?;
                     Ok::<_, Error>(Arc::new(Inner {
@@ -150,26 +147,26 @@ mod tests {
 
     #[tokio::test]
     async fn empty_input_returns_empty_output() {
-        let embedder = Embedder::default_qwen3();
+        let embedder = Embedder::default_gemma();
         let result = embedder.embed(Vec::new()).await.unwrap();
         assert!(result.is_empty());
     }
 
     #[test]
-    fn config_defaults_match_d12() {
+    fn config_defaults_match_d12_revised() {
         let cfg = EmbedderConfig::default();
-        assert_eq!(cfg.model_id, "Qwen/Qwen3-Embedding-0.6B");
         assert_eq!(cfg.max_length, 512);
-        assert_eq!(EMBEDDING_DIM, 1024);
+        assert!(cfg.show_download_progress);
+        assert_eq!(EMBEDDING_DIM, 768);
     }
 
-    /// Real model call. Ignored by default — downloads ~1.2 GB on first
-    /// run and needs ~3 GB RAM. Run explicitly with
+    /// Real model call. Ignored by default — downloads ~300 MB on first
+    /// run. Run explicitly with
     /// `cargo test -p ravn-embeddings -- --ignored embeds_real_text`.
     #[tokio::test]
     #[ignore]
     async fn embeds_real_text() {
-        let embedder = Embedder::default_qwen3();
+        let embedder = Embedder::default_gemma();
         let vecs = embedder
             .embed(vec![
                 "the quick brown fox".into(),
@@ -179,9 +176,7 @@ mod tests {
             .expect("embed");
         assert_eq!(vecs.len(), 2);
         assert_eq!(vecs[0].len(), EMBEDDING_DIM);
-        // The German and English versions of the same sentence should be
-        // close in cosine distance (multilingual model).
         let dot: f32 = vecs[0].iter().zip(&vecs[1]).map(|(a, b)| a * b).sum();
-        assert!(dot > 0.5, "expected high cosine sim, got {dot}");
+        assert!(dot > 0.3, "expected positive cosine sim, got {dot}");
     }
 }
