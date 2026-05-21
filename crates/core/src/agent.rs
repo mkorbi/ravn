@@ -14,11 +14,12 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use futures::StreamExt;
+use ravn_embeddings::Embedder;
 use ravn_llm::{
     ContentBlock, LlmProvider, Message, PromptBuilder, Role, StreamChunk, Usage,
 };
 use ravn_memory::SemanticMemory;
-use ravn_persistence::{events, Db};
+use ravn_persistence::{events, messages, vector, Db};
 use ravn_tools::{ApprovalDecision, Approver, ToolContext, ToolRegistry};
 use tokio_util::sync::CancellationToken;
 
@@ -50,6 +51,9 @@ pub struct Agent {
     tools: Arc<ToolRegistry>,
     approver: Arc<dyn Approver>,
     db: Db,
+    /// Optional — if `Some`, every persisted message is also embedded and
+    /// indexed in `messages_vec` (fire-and-forget). Tests pass `None`.
+    embedder: Option<Arc<Embedder>>,
 }
 
 impl Agent {
@@ -64,7 +68,13 @@ impl Agent {
             tools,
             approver,
             db,
+            embedder: None,
         }
+    }
+
+    pub fn with_embedder(mut self, embedder: Arc<Embedder>) -> Self {
+        self.embedder = Some(embedder);
+        self
     }
 }
 
@@ -128,6 +138,11 @@ impl Agent {
             pb = pb.history(history.clone()).tools(self.tools.as_schemas());
             let req = pb.build(&config.model, next_input.clone(), config.max_tokens);
 
+            // Persist the next user-role turn (initial user input or
+            // tool-results aggregation) into the messages table — both
+            // FTS5 and (if configured) vector index pick it up via the
+            // fire-and-forget helper.
+            self.persist_message(&ctx.session_id, &next_input).await;
             history.push(next_input.clone());
 
             // Stream the LLM response, accumulating text / tool-use blocks.
@@ -157,6 +172,7 @@ impl Agent {
                 role: Role::Assistant,
                 content: assistant.blocks.clone(),
             };
+            self.persist_message(&ctx.session_id, &assistant_msg).await;
             history.push(assistant_msg);
 
             // Split out tool-uses from terminal text.
@@ -315,6 +331,59 @@ impl Agent {
         }
     }
 
+    /// Persist a `Message` to the `messages` table (full content as JSON
+    /// so FTS5 indexes it) and, if an embedder is configured, fire-and-
+    /// forget an embed-and-insert into `messages_vec`. Best-effort —
+    /// errors are logged but don't abort the agent loop.
+    async fn persist_message(&self, session_id: &str, msg: &Message) {
+        let role = match msg.role {
+            Role::System => "system",
+            Role::User => "user",
+            Role::Assistant => "assistant",
+            Role::Tool => "tool",
+        };
+        let content_json = match serde_json::to_string(&msg.content) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(error = %e, "serialize message content");
+                return;
+            }
+        };
+        let rowid = match messages::append(&self.db, session_id, role, &content_json).await {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::warn!(error = %e, "messages::append");
+                return;
+            }
+        };
+        if let Some(embedder) = self.embedder.clone() {
+            let db = self.db.clone();
+            let text = extract_text(&msg.content);
+            if text.is_empty() {
+                return;
+            }
+            tokio::spawn(async move {
+                match embedder.embed(vec![text]).await {
+                    Ok(mut vecs) => {
+                        if let Some(v) = vecs.pop() {
+                            if let Err(e) = vector::insert(
+                                &db,
+                                vector::VecTable::Messages,
+                                rowid,
+                                &v,
+                            )
+                            .await
+                            {
+                                tracing::warn!(error = %e, rowid, "vector insert");
+                            }
+                        }
+                    }
+                    Err(e) => tracing::warn!(error = %e, "embedder.embed"),
+                }
+            });
+        }
+    }
+
     async fn stream_one_turn(
         &self,
         req: ravn_llm::CompletionRequest,
@@ -437,6 +506,21 @@ fn finalize_tool(t: ToolBuf) -> ContentBlock {
         name: t.name,
         input,
     }
+}
+
+/// Concatenate the searchable text from a list of content blocks for
+/// embedding. Tool-use blocks (JSON args) and thinking deltas are
+/// excluded — only what a human would see as the message body.
+fn extract_text(blocks: &[ContentBlock]) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for b in blocks {
+        match b {
+            ContentBlock::Text { text } => parts.push(text.as_str()),
+            ContentBlock::ToolResult { content, .. } => parts.push(content.as_str()),
+            ContentBlock::ToolUse { .. } | ContentBlock::Thinking { .. } => {}
+        }
+    }
+    parts.join("\n")
 }
 
 fn push_unique_tool(

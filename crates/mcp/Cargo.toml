@@ -1,5 +1,5 @@
 [package]
-name = "ravn-core"
+name = "ravn-mcp"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,21 +8,16 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-ravn-embeddings.workspace = true
-ravn-llm.workspace = true
-ravn-memory.workspace = true
-ravn-persistence.workspace = true
 ravn-tools.workspace = true
 
+rmcp.workspace = true
 tokio.workspace = true
-tokio-util.workspace = true
 async-trait.workspace = true
-futures.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+toml.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-async-stream = "0.3"
-schemars.workspace = true
+tempfile = "3"

@@ -6,11 +6,14 @@
 //! Migrations live in `crates/persistence/migrations/` and are embedded at
 //! compile time via `sqlx::migrate!`.
 
+pub mod allowlist;
 pub mod db;
 pub mod error;
 pub mod events;
 pub mod messages;
 pub mod sessions;
+pub mod skills;
+pub mod vector;
 
 pub use db::{now_millis, Db};
 pub use error::Error;
@@ -120,6 +123,95 @@ mod tests {
 
         let hits = messages::search(&db, "rust", 10).await.unwrap();
         assert_eq!(hits.len(), 1);
+    }
+
+    fn unit_vec(seed: f32) -> Vec<f32> {
+        let raw: Vec<f32> = (0..vector::EMBEDDING_DIM)
+            .map(|i| (i as f32 * 0.001) + seed)
+            .collect();
+        let norm: f32 = raw.iter().map(|x| x * x).sum::<f32>().sqrt();
+        raw.into_iter().map(|x| x / norm).collect()
+    }
+
+    #[tokio::test]
+    async fn hybrid_search_falls_back_to_fts_with_empty_vec() {
+        let db = db().await;
+        sessions::create(&db, "s", "cli", None).await.unwrap();
+        messages::append(&db, "s", "user", "berlin weather").await.unwrap();
+        let hits = messages::search_hybrid(&db, "berlin", &[], 10).await.unwrap();
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].content.contains("berlin"));
+    }
+
+    #[tokio::test]
+    async fn hybrid_search_merges_fts_and_vec_via_rrf() {
+        // Tempfile DB so vec0 (rusqlite) and FTS5 (sqlx) share storage.
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("hybrid.db");
+        let db = Db::open(&path).await.unwrap();
+        sessions::create(&db, "s", "cli", None).await.unwrap();
+
+        // Three messages — only one mentions "rust"; embeddings are
+        // contrived such that vec ranks message id=3 first.
+        let m1 = messages::append(&db, "s", "user", "berlin weather").await.unwrap();
+        let m2 = messages::append(&db, "s", "user", "tokyo rust meetup").await.unwrap();
+        let m3 = messages::append(&db, "s", "user", "paris cafe notes").await.unwrap();
+
+        vector::insert(&db, vector::VecTable::Messages, m1, &unit_vec(2.0))
+            .await
+            .unwrap();
+        vector::insert(&db, vector::VecTable::Messages, m2, &unit_vec(1.0))
+            .await
+            .unwrap();
+        vector::insert(&db, vector::VecTable::Messages, m3, &unit_vec(0.0))
+            .await
+            .unwrap();
+
+        // Hybrid query: text "rust" only matches m2, vec query close to m3.
+        // RRF should rank m2 (text rank 1) ahead of m3 (vec rank 1) since
+        // they tie on RRF score and the merge keeps both, but m2 has 1
+        // contribution out of FTS5 and m3 has 1 out of vec — they tie.
+        // What we actually assert: the union of m2 + m3 appears in the
+        // top 2.
+        let hits = messages::search_hybrid(&db, "rust", &unit_vec(0.0), 2)
+            .await
+            .unwrap();
+        let ids: std::collections::HashSet<i64> = hits.iter().map(|r| r.id).collect();
+        assert!(ids.contains(&m2));
+        assert!(ids.contains(&m3));
+    }
+
+    #[tokio::test]
+    async fn get_by_ids_preserves_order() {
+        let db = db().await;
+        sessions::create(&db, "s", "cli", None).await.unwrap();
+        let a = messages::append(&db, "s", "user", "a").await.unwrap();
+        let b = messages::append(&db, "s", "user", "b").await.unwrap();
+        let c = messages::append(&db, "s", "user", "c").await.unwrap();
+        let rows = messages::get_by_ids(&db, &[c, a, b]).await.unwrap();
+        assert_eq!(rows.iter().map(|r| r.id).collect::<Vec<_>>(), vec![c, a, b]);
+    }
+
+    #[tokio::test]
+    async fn allowlist_insert_then_list() {
+        let db = db().await;
+        allowlist::insert(&db, "shell").await.unwrap();
+        allowlist::insert(&db, "file_write").await.unwrap();
+        let names = allowlist::list_all(&db).await.unwrap();
+        assert_eq!(names.len(), 2);
+        assert!(names.contains(&"shell".to_string()));
+        assert!(allowlist::contains(&db, "shell").await.unwrap());
+        assert!(!allowlist::contains(&db, "datetime").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn allowlist_insert_idempotent_then_remove() {
+        let db = db().await;
+        allowlist::insert(&db, "shell").await.unwrap();
+        allowlist::insert(&db, "shell").await.unwrap();
+        assert_eq!(allowlist::list_all(&db).await.unwrap().len(), 1);
+        allowlist::remove(&db, "shell").await.unwrap();
+        assert!(!allowlist::contains(&db, "shell").await.unwrap());
     }
 
     #[tokio::test]

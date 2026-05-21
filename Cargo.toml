@@ -1,9 +1,12 @@
 [workspace]
 members = [
     "crates/core",
+    "crates/embeddings",
     "crates/llm",
+    "crates/mcp",
     "crates/memory",
     "crates/persistence",
+    "crates/skills",
     "crates/tools",
     "crates/cli",
 ]
@@ -40,6 +43,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"]
 # --- Persistence (D2: sqlx default + rusqlite for FTS5/vec0) ---
 sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio-rustls", "macros", "migrate"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
+sqlite-vec = "0.1"
 
 # --- LLM (D1: rig-core for provider backends + raw ReAct loop on top) ---
 rig-core = "0.37"
@@ -58,11 +62,22 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 # --- HTTP ---
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "charset", "http2"] }
 
+# --- MCP ---
+rmcp = { version = "1", features = ["client", "transport-child-process"] }
+toml = "0.8"
+
+# --- Skills / Misc ---
+serde_yaml = "0.9"
+sha2 = "0.10"
+
 # --- Internal workspace crates ---
 ravn-core = { path = "crates/core" }
+ravn-embeddings = { path = "crates/embeddings" }
 ravn-llm = { path = "crates/llm" }
+ravn-mcp = { path = "crates/mcp" }
 ravn-memory = { path = "crates/memory" }
 ravn-persistence = { path = "crates/persistence" }
+ravn-skills = { path = "crates/skills" }
 ravn-tools = { path = "crates/tools" }
 
 [profile.dev]

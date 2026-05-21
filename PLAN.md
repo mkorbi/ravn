@@ -27,6 +27,10 @@
 | D8 | Memory-Crate (Phase 1) | **Neuer `crates/memory`** | Eigener Crate fuer Working/Episodic/Semantic/Procedural Memory (project.md §1.4). Phase 1 implementiert nur Semantic (Markdown-Files); Episodic kommt in Phase 2. |
 | D9 | Web-Tools (Phase 1) | **`web_fetch` only** | reqwest + HTML-to-Markdown fuer URL→Markdown, kein externer API-Key noetig. `web_search` verschiebt sich auf Phase 2 (ggf. via MCP-Server statt nativer Implementation). |
 | D10 | Cache-Tracking (Phase 1) | **`hit_rate` in Statuszeile** | `hit_rate = cache_read / (input + cache_read + cache_creation)` als 4. Wert in der TUI-Statusbar. PLAN.md Trigger `<60%` loest Warnung aus. |
+| D11 | Skills-Storage (Phase 2) | **Hybrid: Filesystem canonical + DB-Spiegel für Index** | `~/.ravn/skills/<name>/SKILL.md` + `scripts/` + `reference/` als Single Source of Truth (git-versionbar, im Editor). SQLite spiegelt Frontmatter + Body für FTS5 + Vector-Index. Sync bei Skill-Load + manueller `skills::reload`. Mehr Code als FS-only, aber beste Such-UX. |
+| D12 | Embedding-Modell (Phase 2) | **EmbeddingGemma-300M (768 dim, multilingual)** | `onnx-community/embeddinggemma-300m-ONNX` via fastembed-rs (ONNX-Runtime). ~300 MB Modell, multilingual (DE/EN), spürbar schneller als Qwen3-Embedding-0.6B (~10-30× kleinerer Footprint). `messages_vec` + `skills_vec` haben `vec0(embedding float[768])`. **D12-Revision** vom 2026-05-20: ursprünglich Qwen3 0.6B gewählt, aber ~1.2 GB Download + ~3 GB RAM zu schwer für den Personal-Assistant-Use-Case; EmbeddingGemma reicht für Session-Search + Skill-Matching. |
+| D13 | Allowlist-Persistence (Phase 2) | **`tool_allowlist(tool_name PRIMARY KEY, created_at)`** | DB-Table macht `a`-Taste im Modal session-übergreifend. Pure Name-Match — kein Args-Pattern. Risiko: einmal erlaubt = alle künftigen Args ohne Modal. Mitigation: User kann via `/allowlist clear <name>` revoken (Phase 2 Followup). |
+| D14 | MCP-Tool-Permissions (Phase 2) | **Pro-Server-Default in `mcp-servers.toml` + Pro-Tool-Override** | `[servers.github] permission = "read"` setzt Default für alle Tools dieses Servers. `[tools."github__create_issue"] permission = "write"` überschreibt einzelne. Wenn kein Server-Default → conservative Default `write` (mit Modal). |
 
 ---
 
@@ -230,26 +234,27 @@ Phase 1 ist abgenommen wenn:
 
 **Goal**: Externe MCP-Server konsumierbar; Skill-Discovery via Progressive Disclosure; semantisches Session-Search.
 
-**Abhängigkeit**: Phase 1 abgeschlossen.
+**Abhängigkeit**: Phase 1 abgeschlossen. Decisions [D11–D14] geklärt.
 
-### Tasks
-- [ ] **2.1** `mcp::client` über `rmcp` 0.16+ mit stdio+HTTP-Transport.
-- [ ] **2.2** MCP-Server-Konfig: `~/.ravn/mcp-servers.toml` mit Befehl, Args, Env-Whitelist.
-- [ ] **2.3** Integration-Tests mit drei realen MCP-Servern (Filesystem, GitHub, Playwright).
-- [ ] **2.4** `skills`-Crate: `SKILL.md`-Parser (YAML-Frontmatter via `serde_yaml`).
-- [ ] **2.5** Skill-Registry mit Top-K Description-Matching (Trie + Embedding-Index).
-- [ ] **2.6** Progressive Disclosure: `skill_list` (Metadaten, ~100 Tok/Skill) und `skill_view` (lazy SKILL.md-Load) als Tools.
-- [ ] **2.7** 3–5 Initial-Skills: `git-workflow`, `web-research`, `note-taking`, `code-review`, `daily-planning`.
-- [ ] **2.8** `fastembed-rs` 5.13+ für Embedding-Generation (BGE-Small default).
-- [ ] **2.9** `sqlite-vec` `vec0`-Tabelle für `messages_vec`, Embedding-Pipeline (batch 256).
-- [ ] **2.10** Hybrid Session-Search: FTS5 + Vec, RRF-Re-Ranking.
-- [ ] **2.11** Approval-Allowlist: User kann Tool+Args-Pattern für künftige Auto-Allow markieren.
+### Tasks (Ausführungs-Reihenfolge)
+- [ ] **2.11** Approval-Allowlist persistieren ([D13]): neue Migration `tool_allowlist(tool_name PK, created_at)`; `TuiApprover` lädt sie beim Start + schreibt bei `AllowAndRemember`. Kleiner Quick-Win, baut nichts Neues drumherum.
+- [ ] **2.8** `fastembed-rs` 5.13+ in neuer `crates/embeddings`-Crate. Lazy-Load `Qwen3-Embedding-0.6B` ([D12]) beim ersten Embedding-Call. ONNX-Runtime via fastembed default.
+- [ ] **2.9** `sqlite-vec` 0.1 als loadable Extension via `rusqlite::Connection::load_extension`. Neue Migration: `messages_vec(embedding float[1024])` + `skills_vec(embedding float[1024])`. Embedding-Pipeline batched (256 docs/call).
+- [ ] **2.10** Hybrid Session-Search: `ravn_persistence::messages::search_hybrid(query, limit)` macht FTS5 + Vec parallel, mergt via Reciprocal Rank Fusion (RRF). `session_search`-Tool nutzt es ab jetzt.
+- [ ] **2.1** `mcp::client` in neuer `crates/mcp`-Crate über `rmcp` 0.16+. stdio-Transport (Subprocess) + HTTP-Transport (für Cloud-MCPs). Wrappt MCP-Tools als `ravn_tools::Tool`-Trait-Impls.
+- [ ] **2.2** MCP-Server-Konfig: `~/.ravn/mcp-servers.toml`. Schema: `[servers.<name>] command/args/env_whitelist/permission`; `[tools."<server>__<tool>"]` Override. Load + register beim Start.
+- [ ] **2.3** Integration-Smoketest mit 3 öffentlichen Servern: `@modelcontextprotocol/server-filesystem`, `@modelcontextprotocol/server-github`, `@playwright/mcp`. Lokale subprocess-Tests, kein CI (Phase 3).
+- [ ] **2.4** `crates/skills` Crate-Skelett. `SKILL.md`-Parser (YAML-Frontmatter via `serde_yaml`); Sync-Logik FS → SQLite-Spiegel ([D11]).
+- [ ] **2.5** Skill-Registry: FTS5 + Vec im DB-Spiegel; Top-K-Match auf User-Prompt via Embedding der ersten User-Message. Builder gibt sortiertes `Vec<SkillMeta>` für PromptBuilder zurück.
+- [ ] **2.6** Progressive Disclosure: `skill_list` (alle Skill-Metadaten, ~100 Tok/Skill) und `skill_view <name>` (lädt SKILL.md + ggf. referenzierte Files) als native Tools.
+- [ ] **2.7** 3 Initial-Skills shippen unter `~/.ravn/skills/`: `git-workflow`, `web-research`, `note-taking`. (`code-review` + `daily-planning` als Phase-3-Stretch).
 
 ### Akzeptanzkriterien
-- Agent kann externen MCP-Server (z.B. Playwright) ohne Code-Änderung adden.
-- 100 fiktive Skills im Registry → Initial-Prompt-Overhead < 12k Tokens.
-- `session_search "topic"` liefert in <100 ms relevante Ergebnisse aus Vorsessions.
-- Allowlist persistiert über Sessions in DB.
+- Agent kann externen MCP-Server (z.B. Playwright) ohne Code-Änderung via `mcp-servers.toml` adden.
+- 100 fiktive Skills im Registry → Initial-Prompt-Overhead < 12k Tokens dank Progressive Disclosure.
+- `session_search "topic"` liefert in <100 ms relevante Ergebnisse aus Vorsessions via FTS5+Vec-Hybrid.
+- Allowlist persistiert über Sessions in DB (`tool_allowlist` table).
+- Allowlist-Eintrag aus Session A wirkt in Session B beim selben Tool.
 
 ---
 

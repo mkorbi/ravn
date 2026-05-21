@@ -22,6 +22,7 @@ use futures::StreamExt;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use ravn_core::{Agent, AgentConfig, RunContext};
+use ravn_embeddings::Embedder;
 use ravn_llm::anthropic::AnthropicProvider;
 use ravn_llm::openai::OpenAiProvider;
 use ravn_llm::LlmProvider;
@@ -69,13 +70,57 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let (event_tx, event_rx) = mpsc::channel::<AppEvent>(256);
-    let approver = Arc::new(TuiApprover::new(event_tx.clone()));
+    let approver = Arc::new(TuiApprover::new(db.clone(), event_tx.clone()));
+    approver.preload().await;
+
+    // Shared text-embedder for the agent's message persistence + the
+    // session_search tool's hybrid mode. Lazy-loads Qwen3 on first use
+    // (no startup cost if the user never triggers a search).
+    let embedder = Arc::new(Embedder::default_gemma());
+
+    // Sync skills from ~/.ravn/skills/ into the DB mirror at startup
+    // (Phase 2.4/2.5). Embeddings happen fire-and-forget — the
+    // skill_list tool returns metadata immediately even if the vec
+    // index hasn't caught up yet.
+    let skills_dir = data_dir.join("skills");
+    match ravn_skills::load_all_from_fs(&skills_dir).await {
+        Ok(skills) if !skills.is_empty() => {
+            match ravn_skills::sync_to_db(&db, skills, Some(embedder.clone())).await {
+                Ok(stats) => tracing::info!(
+                    inserted = stats.inserted,
+                    updated = stats.updated,
+                    unchanged = stats.unchanged,
+                    deleted = stats.deleted,
+                    "skills sync done"
+                ),
+                Err(e) => tracing::warn!(error = %e, "skills sync failed"),
+            }
+        }
+        Ok(_) => tracing::debug!("no skills configured in {}", skills_dir.display()),
+        Err(e) => tracing::warn!(error = %e, "skills load failed"),
+    }
 
     let mut registry = ToolRegistry::new();
-    native::register_defaults(&mut registry, data_dir.clone());
+    native::register_defaults(&mut registry, data_dir.clone(), Some(embedder.clone()));
+
+    // Load configured MCP servers (Phase 2.1/2.2). The returned
+    // connections own the subprocesses — keep them alive for the
+    // program lifetime; dropping closes them.
+    let mcp_config_path = data_dir.join("mcp-servers.toml");
+    let _mcp_connections =
+        match ravn_mcp::connect_and_register(&mcp_config_path, &mut registry).await {
+            Ok(conns) => conns,
+            Err(e) => {
+                tracing::warn!(error = %e, "mcp config load failed; continuing without MCP servers");
+                Vec::new()
+            }
+        };
+
     let tools = Arc::new(registry);
 
-    let agent = Arc::new(Agent::new(provider, tools, approver, db.clone()));
+    let agent = Arc::new(
+        Agent::new(provider, tools, approver, db.clone()).with_embedder(embedder),
+    );
     let agent_config = AgentConfig::new(model.clone());
 
     let app = App::new(

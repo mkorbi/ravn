@@ -1,4 +1,7 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
+use ravn_embeddings::Embedder;
 use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
 
@@ -15,7 +18,20 @@ struct Args {
     limit: Option<i64>,
 }
 
-pub struct SessionSearch;
+/// Search across messages in every past session.
+///
+/// With an embedder configured (Phase 2.10), the tool runs FTS5 (BM25)
+/// and `sqlite-vec` k-NN in parallel and merges via Reciprocal Rank
+/// Fusion. Without one, it falls back to FTS5-only.
+pub struct SessionSearch {
+    pub embedder: Option<Arc<Embedder>>,
+}
+
+impl SessionSearch {
+    pub fn new(embedder: Option<Arc<Embedder>>) -> Self {
+        Self { embedder }
+    }
+}
 
 #[async_trait]
 impl Tool for SessionSearch {
@@ -23,7 +39,7 @@ impl Tool for SessionSearch {
         "session_search"
     }
     fn description(&self) -> &'static str {
-        "Full-text search across messages in every past session. Returns BM25-ranked hits with session ID, role, and a content excerpt."
+        "Hybrid full-text + semantic search across messages in every past session. Returns ranked hits with session id, role, and a content excerpt."
     }
     fn permission(&self) -> Permission {
         Permission::Read
@@ -41,9 +57,36 @@ impl Tool for SessionSearch {
             .map_err(|e| ToolError::InvalidArgs(e.to_string()))?;
         let limit = args.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, 50);
 
-        let hits = ravn_persistence::messages::search(&ctx.db, &args.query, limit)
-            .await
-            .map_err(|e| ToolError::Internal(e.to_string()))?;
+        let hits = match &self.embedder {
+            Some(embedder) => {
+                // Try to embed the query; if it fails (e.g. model not
+                // downloaded yet), fall back to FTS5-only.
+                match embedder.embed(vec![args.query.clone()]).await {
+                    Ok(mut vecs) => match vecs.pop() {
+                        Some(vec) => ravn_persistence::messages::search_hybrid(
+                            &ctx.db,
+                            &args.query,
+                            &vec,
+                            limit,
+                        )
+                        .await
+                        .map_err(|e| ToolError::Internal(e.to_string()))?,
+                        None => ravn_persistence::messages::search(&ctx.db, &args.query, limit)
+                            .await
+                            .map_err(|e| ToolError::Internal(e.to_string()))?,
+                    },
+                    Err(e) => {
+                        tracing::warn!(error = %e, "session_search embed failed; falling back to fts");
+                        ravn_persistence::messages::search(&ctx.db, &args.query, limit)
+                            .await
+                            .map_err(|e| ToolError::Internal(e.to_string()))?
+                    }
+                }
+            }
+            None => ravn_persistence::messages::search(&ctx.db, &args.query, limit)
+                .await
+                .map_err(|e| ToolError::Internal(e.to_string()))?,
+        };
 
         if hits.is_empty() {
             return Ok(ToolOutput::ok(format!("no hits for `{}`", args.query)));

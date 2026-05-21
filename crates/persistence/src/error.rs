@@ -3,6 +3,9 @@ pub enum Error {
     #[error("database: {0}")]
     Db(#[from] sqlx::Error),
 
+    #[error("rusqlite: {0}")]
+    RuSqlite(#[from] rusqlite::Error),
+
     #[error("migration: {0}")]
     Migration(#[from] sqlx::migrate::MigrateError),
 
@@ -14,4 +17,10 @@ pub enum Error {
 
     #[error("invalid path: {0}")]
     InvalidPath(String),
+
+    #[error("blocking-task join: {0}")]
+    Join(String),
+
+    #[error("wrong embedding dim: expected {expected}, got {actual}")]
+    WrongDim { expected: usize, actual: usize },
 }
