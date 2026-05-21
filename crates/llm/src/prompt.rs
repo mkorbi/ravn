@@ -21,7 +21,9 @@
 //! breakpoints are emitted per Anthropic's limit.
 
 use crate::message::Message;
-use crate::request::{CacheBreakpoint, CachePosition, CacheTtl, CompletionRequest, ToolSchema};
+use crate::request::{
+    CacheBreakpoint, CachePosition, CacheTtl, CompletionRequest, ReasoningEffort, ToolSchema,
+};
 
 /// Builder enforcing the cache-stable prompt assembly order. Methods take
 /// `self` by value so that the type system catches out-of-order usage at
@@ -34,6 +36,7 @@ pub struct PromptBuilder {
     soul_md: Option<String>,
     user_md: Option<String>,
     history: Vec<Message>,
+    reasoning_effort: Option<ReasoningEffort>,
 }
 
 impl PromptBuilder {
@@ -46,6 +49,7 @@ impl PromptBuilder {
             soul_md: None,
             user_md: None,
             history: Vec::new(),
+            reasoning_effort: None,
         }
     }
 
@@ -84,6 +88,14 @@ impl PromptBuilder {
         self
     }
 
+    /// Set provider-side reasoning effort. Maps to
+    /// `thinking.budget_tokens` for Anthropic and `reasoning_effort` for
+    /// OpenAI o-series.
+    pub fn reasoning_effort(mut self, effort: Option<ReasoningEffort>) -> Self {
+        self.reasoning_effort = effort;
+        self
+    }
+
     /// Assemble the final [`CompletionRequest`]. `user_turn` is the new
     /// user input — it always goes last and is never inside the cached
     /// prefix.
@@ -101,6 +113,7 @@ impl PromptBuilder {
             soul_md,
             user_md,
             history,
+            reasoning_effort,
         } = self;
 
         let combined_system = assemble_system(
@@ -144,7 +157,7 @@ impl PromptBuilder {
             messages,
             tools,
             cache_breakpoints,
-            reasoning_effort: None,
+            reasoning_effort,
             max_tokens,
             temperature: None,
         }

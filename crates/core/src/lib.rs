@@ -7,11 +7,13 @@ pub mod agent;
 pub mod budget;
 pub mod error;
 pub mod event;
+pub mod reasoning;
 
 pub use agent::{Agent, AgentConfig, RunContext, RunSummary};
 pub use budget::{Budget, BudgetTracker, BudgetUsage};
 pub use error::AgentError;
 pub use event::{ChannelSink, EventSink, LoopEvent, NullSink};
+pub use reasoning::Mode as ReasoningMode;
 
 #[cfg(test)]
 mod tests;

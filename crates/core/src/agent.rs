@@ -26,6 +26,7 @@ use tokio_util::sync::CancellationToken;
 use crate::budget::{Budget, BudgetTracker, BudgetUsage};
 use crate::error::AgentError;
 use crate::event::{EventSink, LoopEvent};
+use crate::reasoning::Mode;
 
 #[derive(Clone)]
 pub struct AgentConfig {
@@ -33,6 +34,9 @@ pub struct AgentConfig {
     pub system_prompt: String,
     pub max_tokens: u32,
     pub budget: Budget,
+    /// Initial reasoning mode. The router ([`crate::router`], Phase 3.1)
+    /// may override per-step; this is the starting point.
+    pub mode: Mode,
 }
 
 impl AgentConfig {
@@ -42,7 +46,13 @@ impl AgentConfig {
             system_prompt: "You are ravn, a concise and helpful assistant.".into(),
             max_tokens: 4096,
             budget: Budget::default(),
+            mode: Mode::default(),
         }
+    }
+
+    pub fn with_mode(mut self, mode: Mode) -> Self {
+        self.mode = mode;
+        self
     }
 }
 
@@ -135,7 +145,10 @@ impl Agent {
             if let Some(u) = &ctx.semantic.user {
                 pb = pb.user_md(u);
             }
-            pb = pb.history(history.clone()).tools(self.tools.as_schemas());
+            pb = pb
+                .history(history.clone())
+                .tools(self.tools.as_schemas())
+                .reasoning_effort(config.mode.reasoning_effort());
             let req = pb.build(&config.model, next_input.clone(), config.max_tokens);
 
             // Persist the next user-role turn (initial user input or
