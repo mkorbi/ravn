@@ -176,11 +176,22 @@ impl LlmProvider for AnthropicProvider {
                             yield Ok(StreamChunk::ThinkingDelta(reasoning));
                         }
                         StreamedAssistantContent::Reasoning(r) => {
+                            // A complete `Reasoning` block carries both text
+                            // and (for Anthropic Extended Thinking) the
+                            // signature we have to round-trip on the next
+                            // turn. Emit deltas first, then a single
+                            // ThinkingSignature so the agent loop can
+                            // capture it.
+                            let mut signature: Option<String> = None;
                             for block in r.content {
-                                if let RigReasoningContent::Text { text, .. } = block {
+                                if let RigReasoningContent::Text { text, signature: sig } = block {
+                                    if signature.is_none() {
+                                        signature = sig;
+                                    }
                                     yield Ok(StreamChunk::ThinkingDelta(text));
                                 }
                             }
+                            yield Ok(StreamChunk::ThinkingSignature(signature));
                         }
                         StreamedAssistantContent::ToolCall { tool_call, internal_call_id } => {
                             if delta_tool.as_deref() == Some(&internal_call_id) {

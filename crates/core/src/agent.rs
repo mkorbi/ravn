@@ -407,6 +407,7 @@ impl Agent {
 
         let mut text = String::new();
         let mut thinking = String::new();
+        let mut thinking_signature: Option<String> = None;
         let mut current_tool: Option<ToolBuf> = None;
         let mut completed_tools: Vec<ContentBlock> = Vec::new();
         // Defense-in-depth dedup: adapters should not emit two
@@ -433,6 +434,14 @@ impl Agent {
                         StreamChunk::ThinkingDelta(t) => {
                             thinking.push_str(&t);
                             emit(&sink, LoopEvent::ThinkingDelta(t)).await;
+                        }
+                        StreamChunk::ThinkingSignature(sig) => {
+                            // Anthropic requires this back on the next turn
+                            // or the API returns 400. Last writer wins —
+                            // Anthropic only emits one block per turn in
+                            // practice; OpenAI's Text reasoning is
+                            // signature-less so this stays None there.
+                            thinking_signature = sig;
                         }
                         StreamChunk::ToolUseStart { id, name } => {
                             if let Some(prev) = current_tool.take() {
@@ -490,7 +499,7 @@ impl Agent {
         if !thinking.is_empty() {
             blocks.push(ContentBlock::Thinking {
                 thinking,
-                signature: None,
+                signature: thinking_signature,
             });
         }
         if !text.is_empty() {

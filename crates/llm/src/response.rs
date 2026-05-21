@@ -55,6 +55,12 @@ pub enum StreamChunk {
     /// Anthropic Extended Thinking delta — not shown to end-users by default
     /// but must be retained across turns to preserve cache coherence.
     ThinkingDelta(String),
+    /// Provider-issued signature for the thinking block that just streamed.
+    /// Anthropic Extended Thinking requires the same signature back on the
+    /// next turn or the API rejects the request. Emitted once per thinking
+    /// block, **after** all `ThinkingDelta`s for that block. `None` for
+    /// providers that don't sign (e.g. OpenAI o-series Text reasoning).
+    ThinkingSignature(Option<String>),
     /// Start of a tool-use block. `input` is empty; partial deltas follow.
     ToolUseStart { id: String, name: String },
     /// Partial JSON for the tool-use input — concatenate to reconstruct.

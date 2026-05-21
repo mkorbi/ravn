@@ -129,11 +129,16 @@ impl LlmProvider for OpenAiProvider {
                             yield Ok(StreamChunk::ThinkingDelta(reasoning));
                         }
                         StreamedAssistantContent::Reasoning(r) => {
+                            let mut signature: Option<String> = None;
                             for block in r.content {
-                                if let RigReasoningContent::Text { text, .. } = block {
+                                if let RigReasoningContent::Text { text, signature: sig } = block {
+                                    if signature.is_none() {
+                                        signature = sig;
+                                    }
                                     yield Ok(StreamChunk::ThinkingDelta(text));
                                 }
                             }
+                            yield Ok(StreamChunk::ThinkingSignature(signature));
                         }
                         StreamedAssistantContent::ToolCall { tool_call, internal_call_id } => {
                             if delta_tool.as_deref() == Some(&internal_call_id) {

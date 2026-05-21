@@ -354,6 +354,85 @@ async fn budget_max_steps_trips() {
 }
 
 #[tokio::test]
+async fn thinking_signature_survives_to_history() {
+    // Phase 3.4: Anthropic Extended Thinking requires the signature
+    // be sent back on the next turn or the API returns 400. The
+    // stream layer extracts it from the complete Reasoning block
+    // and the agent loop must attach it to ContentBlock::Thinking.
+    let scripts = vec![vec![
+        StreamChunk::ThinkingDelta("let me think…".into()),
+        StreamChunk::ThinkingDelta(" about this".into()),
+        StreamChunk::ThinkingSignature(Some("sig-abc-123".into())),
+        StreamChunk::TextDelta("done.".into()),
+        StreamChunk::Done {
+            finish_reason: FinishReason::Stop,
+        },
+    ]];
+    let (agent, ctx, cfg, cancel) =
+        harness(scripts, ToolRegistry::new(), Arc::new(AllowAll)).await;
+    let (tx, _rx) = mpsc::channel(64);
+    let sink = Arc::new(ChannelSink::new(tx));
+
+    let summary = agent.run(&cfg, ctx, sink, cancel).await.unwrap();
+
+    let assistant = summary
+        .history
+        .iter()
+        .find(|m| m.role == Role::Assistant)
+        .expect("assistant message in history");
+    let thinking_block = assistant
+        .content
+        .iter()
+        .find_map(|b| match b {
+            ContentBlock::Thinking { thinking, signature } => {
+                Some((thinking.clone(), signature.clone()))
+            }
+            _ => None,
+        })
+        .expect("Thinking block preserved in history");
+    assert_eq!(thinking_block.0, "let me think… about this");
+    assert_eq!(thinking_block.1.as_deref(), Some("sig-abc-123"));
+}
+
+#[tokio::test]
+async fn thinking_without_signature_is_ok() {
+    // OpenAI o-series Text reasoning is signature-less; we still want
+    // to keep the thinking text in history so the next turn can see it,
+    // just without the signature field.
+    let scripts = vec![vec![
+        StreamChunk::ThinkingDelta("hmm".into()),
+        StreamChunk::ThinkingSignature(None),
+        StreamChunk::TextDelta("ok".into()),
+        StreamChunk::Done {
+            finish_reason: FinishReason::Stop,
+        },
+    ]];
+    let (agent, ctx, cfg, cancel) =
+        harness(scripts, ToolRegistry::new(), Arc::new(AllowAll)).await;
+    let (tx, _rx) = mpsc::channel(64);
+    let sink = Arc::new(ChannelSink::new(tx));
+
+    let summary = agent.run(&cfg, ctx, sink, cancel).await.unwrap();
+    let assistant = summary
+        .history
+        .iter()
+        .find(|m| m.role == Role::Assistant)
+        .unwrap();
+    let block = assistant
+        .content
+        .iter()
+        .find_map(|b| match b {
+            ContentBlock::Thinking { thinking, signature } => {
+                Some((thinking.clone(), signature.clone()))
+            }
+            _ => None,
+        })
+        .expect("Thinking block preserved even without signature");
+    assert_eq!(block.0, "hmm");
+    assert!(block.1.is_none());
+}
+
+#[tokio::test]
 async fn duplicate_tool_use_id_in_stream_is_deduped() {
     // Reproduces the Anthropic-streaming bug: rig emits ToolCallDelta
     // (Start + Delta) AND a final ToolCall for the same provider id,
