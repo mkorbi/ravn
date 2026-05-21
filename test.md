@@ -164,9 +164,15 @@ Im **zweiten Terminal**, nach ein paar Sekunden:
 sqlite3 ~/Library/Application\ Support/ravn/state.db \
   "SELECT COUNT(*) FROM messages_vec;"
 ```
-- [ ] Ergebnis ≥ 2 (User-Turn + Assistant-Turn wurden embeddet, fire-and-forget)
-- [ ] Falls 0: warte 30s und probier nochmal (erstmaliger Modell-Download dauert).
-  Check `ravn.log` auf `loading embedding model` und nachfolgende Embed-Calls.
+
+> **Known limitation:** Das `sqlite3` CLI failed mit
+> `Error: in prepare, no such module: vec0`, weil sqlite-vec bei uns
+> statisch gegen rusqlite gelinkt ist (kein standalone `.dylib`). Der
+> Count ist über das CLI nicht abfragbar. Stattdessen direkt über die
+> TUI testen (Schritt unten) — wenn `session_search` Hits liefert,
+> ist `messages_vec` definitiv gefüllt.
+
+- [X] (Via TUI verifiziert — `session_search` Hits sind der proof)
 
 Jetzt Semantic-Suche testen. In **TUI**:
 ```
@@ -174,8 +180,8 @@ session_search for "ocean creatures"
 ```
 (Das ist ein bewusster reformulierter Begriff, der nicht wörtlich im
 ersten Turn vorkommt — pure FTS5 fände das nicht.)
-- [ ] `🔎 session_search` läuft
-- [ ] Ergebnis enthält mind. einen Hit aus der "marine biology"-Konversation
+- [X] `🔎 session_search` läuft
+- [X] Ergebnis enthält mind. einen Hit aus der "marine biology"-Konversation
   (Beweis: Hybrid + Vec-Index funktioniert)
 
 ---
