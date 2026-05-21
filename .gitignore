@@ -19,3 +19,4 @@ Cargo.lock.bak
 *.db-shm
 *.db-wal
 /data/
+/.fastembed_cache/

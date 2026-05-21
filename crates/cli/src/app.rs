@@ -26,6 +26,9 @@ pub enum DisplayRole {
     ToolEnd,
     /// User denied a tool / approval-related notice.
     Notice,
+    /// Startup splash (raven + version + URL + slash-commands).
+    /// `text` is unused; rendering is delegated to [`crate::splash`].
+    Splash,
 }
 
 /// One central event type for the cli — bundles loop events from the
@@ -85,7 +88,10 @@ impl App {
             history: Vec::new(),
             semantic,
             system_prompt,
-            messages: Vec::new(),
+            messages: vec![DisplayedMessage {
+                role: DisplayRole::Splash,
+                text: String::new(),
+            }],
             input: InputBuffer::new(),
             streaming_buffer: String::new(),
             streaming_active: false,

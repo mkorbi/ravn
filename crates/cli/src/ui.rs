@@ -34,6 +34,9 @@ fn render_scrollback(frame: &mut Frame<'_>, area: Rect, app: &App) {
     let mut lines: Vec<Line> = Vec::new();
     for m in &app.messages {
         match m.role {
+            DisplayRole::Splash => {
+                lines.extend(crate::splash::splash_lines(env!("CARGO_PKG_VERSION")));
+            }
             DisplayRole::User => {
                 lines.push(Line::from(Span::styled(
                     "you:",
