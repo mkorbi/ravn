@@ -48,3 +48,23 @@ pub async fn count(db: &Db) -> Result<i64, Error> {
         .await?;
     Ok(n)
 }
+
+/// Most recent payload for the `(trace_id, kind)` pair, or `None` if no
+/// such event exists. Used by the orchestration layer to load the
+/// latest graph checkpoint.
+pub async fn latest_payload(
+    db: &Db,
+    trace_id: &str,
+    kind: &str,
+) -> Result<Option<Vec<u8>>, Error> {
+    let row: Option<(Vec<u8>,)> = sqlx::query_as(
+        "SELECT payload FROM events
+          WHERE trace_id = ?1 AND kind = ?2
+          ORDER BY id DESC LIMIT 1",
+    )
+    .bind(trace_id)
+    .bind(kind)
+    .fetch_optional(&db.pool)
+    .await?;
+    Ok(row.map(|(p,)| p))
+}
