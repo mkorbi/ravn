@@ -161,6 +161,12 @@ impl App {
     fn apply_loop(&mut self, le: LoopEvent) {
         match le {
             LoopEvent::StepStart { .. } => {}
+            LoopEvent::ModeChange { .. } => {
+                // Phase 3.1: router picked a Mode for this step.
+                // Currently silent — surface it as a dim status badge
+                // in a future TUI polish commit when there's value in
+                // seeing Fast/Deep/Reflect transitions live.
+            }
             LoopEvent::TextDelta(t) => self.streaming_buffer.push_str(&t),
             LoopEvent::ThinkingDelta(_) => {
                 // Phase 1 drops thinking deltas from the scrollback.

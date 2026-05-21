@@ -354,6 +354,155 @@ async fn budget_max_steps_trips() {
 }
 
 #[tokio::test]
+async fn router_emits_mode_change_per_step() {
+    // Plain happy-path: step 1 should classify as Fast (D15 heuristic).
+    let scripts = vec![vec![
+        StreamChunk::TextDelta("hi".into()),
+        StreamChunk::Done {
+            finish_reason: FinishReason::Stop,
+        },
+    ]];
+    let (agent, ctx, cfg, cancel) =
+        harness(scripts, ToolRegistry::new(), Arc::new(AllowAll)).await;
+    let (tx, mut rx) = mpsc::channel(64);
+    let sink = Arc::new(ChannelSink::new(tx));
+
+    agent.run(&cfg, ctx, sink, cancel).await.unwrap();
+    let events = collect_recv(&mut rx).await;
+    let mode_changes: Vec<_> = events
+        .iter()
+        .filter_map(|e| match e {
+            LoopEvent::ModeChange { step, mode } => Some((*step, *mode)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(mode_changes, vec![(1, crate::ReasoningMode::Fast)]);
+}
+
+#[tokio::test]
+async fn router_picks_reflect_after_tool_error() {
+    use crate::reasoning::Mode;
+
+    // Tool that always errors.
+    struct ErroringTool;
+    #[async_trait::async_trait]
+    impl ravn_tools::Tool for ErroringTool {
+        fn name(&self) -> &'static str {
+            "explode"
+        }
+        fn description(&self) -> &'static str {
+            "always errors"
+        }
+        fn permission(&self) -> ravn_tools::Permission {
+            ravn_tools::Permission::Read
+        }
+        fn schema(&self) -> serde_json::Value {
+            serde_json::json!({"type":"object"})
+        }
+        async fn invoke(
+            &self,
+            _args: serde_json::Value,
+            _ctx: &ravn_tools::ToolContext,
+        ) -> Result<ravn_tools::ToolOutput, ravn_tools::ToolError> {
+            Ok(ravn_tools::ToolOutput::error("boom"))
+        }
+    }
+
+    let mut tools = ToolRegistry::new();
+    tools.register(ErroringTool);
+
+    // Turn 1: model calls explode (returns error).
+    // Turn 2: model gives up with text — but router should have switched
+    // it into Reflect mode pre-step.
+    let scripts = vec![
+        vec![
+            StreamChunk::ToolUseStart {
+                id: "toolu_1".into(),
+                name: "explode".into(),
+            },
+            StreamChunk::ToolUseDelta {
+                partial_json: "{}".into(),
+            },
+            StreamChunk::ToolUseEnd,
+            StreamChunk::Done {
+                finish_reason: FinishReason::ToolUse,
+            },
+        ],
+        vec![
+            StreamChunk::TextDelta("giving up.".into()),
+            StreamChunk::Done {
+                finish_reason: FinishReason::Stop,
+            },
+        ],
+    ];
+
+    let (agent, ctx, cfg, cancel) = harness(scripts, tools, Arc::new(AllowAll)).await;
+    let (tx, mut rx) = mpsc::channel(64);
+    let sink = Arc::new(ChannelSink::new(tx));
+    agent.run(&cfg, ctx, sink, cancel).await.unwrap();
+
+    let events = collect_recv(&mut rx).await;
+    let mode_changes: Vec<_> = events
+        .iter()
+        .filter_map(|e| match e {
+            LoopEvent::ModeChange { step, mode } => Some((*step, *mode)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(mode_changes.len(), 2);
+    assert_eq!(mode_changes[0], (1, Mode::Fast));
+    assert_eq!(mode_changes[1], (2, Mode::Reflect));
+}
+
+#[tokio::test]
+async fn fixed_router_overrides_classification() {
+    use crate::reasoning::Mode;
+    use crate::router::FixedRouter;
+
+    let scripts = vec![vec![
+        StreamChunk::TextDelta("hi".into()),
+        StreamChunk::Done {
+            finish_reason: FinishReason::Stop,
+        },
+    ]];
+    let db = Db::open_in_memory().await.unwrap();
+    ravn_persistence::sessions::create(&db, "sess-1", "test", Some("mock"))
+        .await
+        .unwrap();
+    let provider = Arc::new(MockProvider::new(scripts));
+    let agent = Agent::new(provider, Arc::new(ToolRegistry::new()), Arc::new(AllowAll), db)
+        .with_router(Arc::new(FixedRouter(Mode::Deep)));
+
+    let cfg = AgentConfig {
+        budget: Budget {
+            max_steps: 3,
+            ..Budget::default()
+        },
+        ..AgentConfig::new("mock-model")
+    };
+    let ctx = RunContext {
+        session_id: "sess-1".into(),
+        trace_id: "trace-1".into(),
+        semantic: SemanticMemory::default(),
+        history: Vec::new(),
+        user_turn: Message::user("hi"),
+    };
+    let cancel = CancellationToken::new();
+    let (tx, mut rx) = mpsc::channel(64);
+    let sink = Arc::new(ChannelSink::new(tx));
+    agent.run(&cfg, ctx, sink, cancel).await.unwrap();
+
+    let events = collect_recv(&mut rx).await;
+    assert_eq!(
+        events.iter().find_map(|e| match e {
+            LoopEvent::ModeChange { mode, .. } => Some(*mode),
+            _ => None,
+        }),
+        Some(Mode::Deep)
+    );
+}
+
+#[tokio::test]
 async fn thinking_signature_survives_to_history() {
     // Phase 3.4: Anthropic Extended Thinking requires the signature
     // be sent back on the next turn or the API returns 400. The

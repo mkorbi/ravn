@@ -8,12 +8,14 @@ pub mod budget;
 pub mod error;
 pub mod event;
 pub mod reasoning;
+pub mod router;
 
 pub use agent::{Agent, AgentConfig, RunContext, RunSummary};
 pub use budget::{Budget, BudgetTracker, BudgetUsage};
 pub use error::AgentError;
 pub use event::{ChannelSink, EventSink, LoopEvent, NullSink};
 pub use reasoning::Mode as ReasoningMode;
+pub use router::{FixedRouter, HeuristicRouter, Router, RouterInput};
 
 #[cfg(test)]
 mod tests;
