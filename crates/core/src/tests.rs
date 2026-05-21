@@ -455,6 +455,87 @@ async fn router_picks_reflect_after_tool_error() {
 }
 
 #[tokio::test]
+async fn reflect_mode_prepends_self_critique_prefix() {
+    // Tool that always errors → triggers Reflect mode on next step.
+    struct ErroringTool;
+    #[async_trait::async_trait]
+    impl ravn_tools::Tool for ErroringTool {
+        fn name(&self) -> &'static str {
+            "explode"
+        }
+        fn description(&self) -> &'static str {
+            "always errors"
+        }
+        fn permission(&self) -> ravn_tools::Permission {
+            ravn_tools::Permission::Read
+        }
+        fn schema(&self) -> serde_json::Value {
+            serde_json::json!({"type":"object"})
+        }
+        async fn invoke(
+            &self,
+            _args: serde_json::Value,
+            _ctx: &ravn_tools::ToolContext,
+        ) -> Result<ravn_tools::ToolOutput, ravn_tools::ToolError> {
+            Ok(ravn_tools::ToolOutput::error("boom"))
+        }
+    }
+
+    let mut tools = ToolRegistry::new();
+    tools.register(ErroringTool);
+
+    // Turn 1: model calls explode → tool returns is_error=true.
+    // Turn 2: router picks Reflect → loop prepends critique prefix → model gives up.
+    let scripts = vec![
+        vec![
+            StreamChunk::ToolUseStart {
+                id: "toolu_1".into(),
+                name: "explode".into(),
+            },
+            StreamChunk::ToolUseDelta {
+                partial_json: "{}".into(),
+            },
+            StreamChunk::ToolUseEnd,
+            StreamChunk::Done {
+                finish_reason: FinishReason::ToolUse,
+            },
+        ],
+        vec![
+            StreamChunk::TextDelta("giving up.".into()),
+            StreamChunk::Done {
+                finish_reason: FinishReason::Stop,
+            },
+        ],
+    ];
+
+    let (agent, ctx, cfg, cancel) = harness(scripts, tools, Arc::new(AllowAll)).await;
+    let (tx, _rx) = mpsc::channel(64);
+    let sink = Arc::new(ChannelSink::new(tx));
+    let summary = agent.run(&cfg, ctx, sink, cancel).await.unwrap();
+
+    // The reflect-mode user turn (= 2nd user message in history) must
+    // start with the self-critique prefix.
+    let reflect_input = summary
+        .history
+        .iter()
+        .filter(|m| m.role == Role::User)
+        .nth(1)
+        .expect("second user turn (= tool results) in history");
+    let first_text = reflect_input
+        .content
+        .iter()
+        .find_map(|b| match b {
+            ContentBlock::Text { text } => Some(text.clone()),
+            _ => None,
+        })
+        .expect("text block at start of reflect-mode user turn");
+    assert!(
+        first_text.contains("reflection attempt"),
+        "expected self-critique prefix, got: {first_text}"
+    );
+}
+
+#[tokio::test]
 async fn fixed_router_overrides_classification() {
     use crate::reasoning::Mode;
     use crate::router::FixedRouter;

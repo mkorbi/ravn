@@ -133,6 +133,7 @@ impl Agent {
         // Per-step router signals.
         let mut last_iteration_had_tool_error = false;
         let mut previous_mode_was_reflect = false;
+        let mut reflection_attempts: usize = 0;
         let mut current_mode;
 
         loop {
@@ -159,7 +160,17 @@ impl Agent {
                 step: budget.usage.steps,
                 last_iteration_had_tool_error,
                 previous_mode_was_reflect,
+                reflection_attempts,
             });
+            if current_mode == Mode::Reflect {
+                reflection_attempts += 1;
+                // Prepend a Self-Critique-Prefix to the next user turn
+                // (= the aggregated tool_results) so the model is
+                // primed to analyze the failure before acting again.
+                // Does NOT bust the prompt cache: the cached prefix
+                // ends before this user message.
+                next_input = prepend_reflection_prefix(next_input, reflection_attempts);
+            }
             emit(
                 &sink,
                 LoopEvent::ModeChange {
@@ -579,6 +590,25 @@ fn next_input_has_tool_error(blocks: &[ContentBlock]) -> bool {
     blocks
         .iter()
         .any(|b| matches!(b, ContentBlock::ToolResult { is_error: true, .. }))
+}
+
+/// Prepend a Self-Critique-Prefix to a user-role message containing
+/// tool results. The prefix tells the model: a previous call errored,
+/// reflect on why, propose a different approach. Used in
+/// [`Mode::Reflect`] (Phase 3.5).
+fn prepend_reflection_prefix(msg: Message, attempt: usize) -> Message {
+    let prefix = format!(
+        "[reflection attempt {attempt}] The previous tool call returned an error. \
+         Before retrying, analyze briefly what went wrong, then propose a different \
+         approach — do not repeat the exact same call. If you cannot recover, say so."
+    );
+    let mut content = Vec::with_capacity(msg.content.len() + 1);
+    content.push(ContentBlock::Text { text: prefix });
+    content.extend(msg.content);
+    Message {
+        role: msg.role,
+        content,
+    }
 }
 
 /// Concatenate the searchable text from a list of content blocks for
