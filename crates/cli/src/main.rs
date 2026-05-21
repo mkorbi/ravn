@@ -2,8 +2,10 @@
 
 mod app;
 mod approver;
+mod commands;
 mod input;
 mod runner;
+mod splash;
 mod ui;
 
 use std::io::{self, Stdout};
@@ -325,6 +327,14 @@ fn handle_key(
         KeyCode::Char(ch) => app.input.insert_char(ch),
         KeyCode::Backspace => app.input.backspace(),
         KeyCode::Enter => {
+            // Slash-commands are handled client-side and never reach
+            // the LLM. They consume the input buffer the same way a
+            // sent message would.
+            if let Some(cmd) = commands::SlashCommand::parse(&app.input.text) {
+                app.input.clear();
+                cmd.apply(app);
+                return;
+            }
             if let Some(user_msg) = app.push_user_input() {
                 app.last_error = None;
                 app.streaming_active = true;

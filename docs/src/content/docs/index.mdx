@@ -1,0 +1,44 @@
+---
+title: ravn
+description: A personal-assistant AI agent in Rust — ReAct loop, MCP, skills, hybrid search.
+template: splash
+hero:
+  tagline: A personal-assistant AI agent in Rust. Local-first, MCP-native, skill-driven.
+  actions:
+    - text: Get started
+      link: /ravn/getting-started/install/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/mkorbi/ravn
+      icon: external
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+<CardGrid stagger>
+  <Card title="ReAct agent loop" icon="rocket">
+    Thought → action → observation. 50-step cap, budget-aware, cancellable.
+    Streams text to the TUI as the model produces it.
+  </Card>
+  <Card title="Tools you can trust" icon="approve-check">
+    7 native tools (file_read, shell, web_fetch, …) gated by a Read/Write/Exec
+    permission model. Inline approval modal with persistent allowlist.
+  </Card>
+  <Card title="MCP-native" icon="puzzle">
+    Spawn any MCP server as a subprocess; its tools register
+    namespaced (`<server>__<tool>`) into the same registry as native tools.
+  </Card>
+  <Card title="Skills with progressive disclosure" icon="open-book">
+    `SKILL.md` files on disk are the source of truth; ~100 tokens of
+    metadata go into the prompt up front, full bodies pulled on demand.
+  </Card>
+  <Card title="Hybrid memory" icon="magnifier">
+    Sessions are persisted in SQLite + FTS5; messages are auto-embedded
+    via EmbeddingGemma-300M and indexed in sqlite-vec for semantic recall.
+  </Card>
+  <Card title="Pricing- and cache-aware" icon="setting">
+    Anthropic prompt caching is on by default; the status bar shows
+    live hit-rate and per-session USD spend.
+  </Card>
+</CardGrid>
