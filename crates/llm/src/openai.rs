@@ -27,6 +27,16 @@ pub struct OpenAiProvider {
     client: openai::CompletionsClient,
 }
 
+/// Models that reject `temperature` / `top_p` and accept only
+/// `reasoning_effort` (D16 dispatch maps Mode::Deep to High for these).
+/// Covers OpenAI o-series and GPT-5 family.
+pub fn is_reasoning_model(model: &str) -> bool {
+    model.starts_with("o1")
+        || model.starts_with("o3")
+        || model.starts_with("o4")
+        || model.starts_with("gpt-5")
+}
+
 impl OpenAiProvider {
     /// Build a provider from an explicit API key.
     pub fn from_api_key(api_key: impl AsRef<str>) -> Result<Self, Error> {
@@ -72,6 +82,11 @@ impl LlmProvider for OpenAiProvider {
         let reasoning_param = req.reasoning_effort.map(openai_reasoning_param);
         let mut rig_req = to_rig_request(req)?;
         rig_req.additional_params = reasoning_param;
+        if is_reasoning_model(&model_id) {
+            // o-series + gpt-5 reject any `temperature` / `top_p`; the
+            // reasoning_effort field is the only knob.
+            rig_req.temperature = None;
+        }
 
         let model = self.model(&model_id);
         let resp = model
@@ -100,6 +115,9 @@ impl LlmProvider for OpenAiProvider {
             Err(e) => return Box::pin(futures::stream::once(async move { Err(e) })),
         };
         rig_req.additional_params = reasoning_param;
+        if is_reasoning_model(&model_id) {
+            rig_req.temperature = None;
+        }
 
         Box::pin(async_stream::stream! {
             let mut s = match model.stream(rig_req).await {
@@ -181,3 +199,29 @@ impl LlmProvider for OpenAiProvider {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::is_reasoning_model;
+
+    #[test]
+    fn reasoning_models_recognized() {
+        assert!(is_reasoning_model("o1"));
+        assert!(is_reasoning_model("o1-mini"));
+        assert!(is_reasoning_model("o3"));
+        assert!(is_reasoning_model("o3-mini"));
+        assert!(is_reasoning_model("o4-mini"));
+        assert!(is_reasoning_model("gpt-5"));
+        assert!(is_reasoning_model("gpt-5-mini"));
+    }
+
+    #[test]
+    fn chat_models_are_not_reasoning() {
+        assert!(!is_reasoning_model("gpt-4o"));
+        assert!(!is_reasoning_model("gpt-4o-mini"));
+        assert!(!is_reasoning_model("gpt-4-turbo"));
+        assert!(!is_reasoning_model("gpt-3.5-turbo"));
+        assert!(!is_reasoning_model("claude-sonnet-4-6"));
+    }
+}
+
