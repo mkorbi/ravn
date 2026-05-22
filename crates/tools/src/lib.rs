@@ -14,7 +14,7 @@ pub mod native;
 pub mod registry;
 pub mod tool;
 
-pub use context::{AllowAll, Approver, ApprovalDecision, DenyAll, ToolContext};
+pub use context::{AllowAll, AllowlistApprover, Approver, ApprovalDecision, DenyAll, ToolContext};
 pub use registry::ToolRegistry;
 pub use tool::{Permission, Tool, ToolError, ToolOutput};
 
