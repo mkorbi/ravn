@@ -1,0 +1,7 @@
+[toolchain]
+# ravn's MSRV is 1.91 (see Cargo.toml `rust-version`). Pin to stable so any
+# rustup-managed `cargo`/`rustc` invocation auto-selects a compatible toolchain,
+# independent of system PATH ordering.
+channel = "stable"
+components = ["rustfmt", "clippy"]
+profile = "default"
