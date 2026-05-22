@@ -22,8 +22,18 @@ import { Card, CardGrid } from "@astrojs/starlight/components";
     Streams text to the TUI as the model produces it.
   </Card>
   <Card title="Tools you can trust" icon="approve-check">
-    7 native tools (file_read, shell, web_fetch, …) gated by a Read/Write/Exec
-    permission model. Inline approval modal with persistent allowlist.
+    10 native tools (file_read, shell, web_fetch, world_write, …) gated by a
+    Read/Write/Exec permission model. Inline approval modal with persistent
+    allowlist.
+  </Card>
+  <Card title="Reasoning router & subagents" icon="rocket">
+    A per-step router picks Fast / Deep / Reflect — Deep turns on extended
+    thinking. Heavy lookups delegate to read-only subagents with their own
+    budget.
+  </Card>
+  <Card title="Proactive & persistent" icon="setting">
+    Cron-scheduled heartbeats fire unattended runs; a durable world state
+    (projects, open tabs, watch targets) rides in every prompt.
   </Card>
   <Card title="MCP-native" icon="puzzle">
     Spawn any MCP server as a subprocess; its tools register

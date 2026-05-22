@@ -1,11 +1,11 @@
 ---
 title: Native tools
-description: The 9 tools that ship with ravn.
+description: The 10 tools that ship with ravn.
 sidebar:
   order: 3
 ---
 
-ravn ships nine native tools. The LLM sees their JSON schemas in the
+ravn ships ten native tools. The LLM sees their JSON schemas in the
 prompt (Anthropic's `tool` array, OpenAI's `tools` field) and calls
 them by name.
 
@@ -17,6 +17,7 @@ them by name.
 | `web_fetch` | Read | URL → Markdown / text / raw HTML; output marked untrusted |
 | `session_search` | Read | FTS5 + vec hybrid search across past messages |
 | `memory_save` | Write | Append / replace `soul.md` / `memory.md` / `user.md` |
+| `world_write` | Write | Replace persistent world state (projects / open tabs / watch targets) |
 | `datetime` | Read | Current date & time in local or UTC |
 | `skill_list` | Read | List skills; optional FTS5 query filter |
 | `skill_view` | Read | Pull a skill's full `SKILL.md` |

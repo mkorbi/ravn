@@ -5,8 +5,9 @@ sidebar:
   order: 1
 ---
 
-ravn is a Cargo workspace — clone, build, run. Phase 2 ships a CLI
-that talks to Anthropic or OpenAI; local inference comes in Phase 3.
+ravn is a Cargo workspace — clone, build, run. The CLI talks to
+Anthropic or OpenAI and runs a full ReAct agent: native + MCP tools,
+skills, hybrid memory, a reasoning router, and scheduled heartbeats.
 
 ## Prerequisites
 
@@ -20,6 +21,9 @@ Optional:
 
 - **Node.js + `npx`** if you want to load MCP servers — most public MCP
   servers are distributed as npm packages.
+- **cmake + a C/C++ compiler** for voice input (`/voice`) — `whisper-rs`
+  builds whisper.cpp from source. On macOS: `brew install cmake` (Xcode CLT
+  provides clang).
 - A modern terminal that handles ANSI colors and Unicode.
 
 ## Build from source
@@ -61,9 +65,21 @@ scrollback. `/help` lists the slash-commands.
 | `soul.md` / `memory.md` / `user.md` | semantic memory (optional) |
 | `skills/<name>/SKILL.md` | progressive-disclosure skills |
 | `mcp-servers.toml` | MCP server config |
+| `heartbeats.toml` | cron-scheduled heartbeat jobs |
+| `whisper/ggml-base.bin` | local Whisper model for voice input (auto-downloaded) |
 | `ravn.log` | tracing log (TUI sends `tracing` here, not to stderr) |
 
-Set `RUST_LOG=ravn=debug` to crank up verbosity.
+## Environment variables
+
+| Var | Purpose |
+|---|---|
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | provider credential — one is required |
+| `RAVN_MODEL` | override the default model (e.g. `claude-opus-4-7`, `gpt-4o`) |
+| `OPENAI_BASE_URL` | point the OpenAI client at an OpenAI-compatible endpoint |
+| `RUST_LOG` | tracing filter, e.g. `ravn=debug` |
+| `HF_HOME` | cache dir for the downloaded embedding model |
+| `RAVN_WHISPER_MODEL` | path to a ggml Whisper model (overrides the auto-download) |
+| `RAVN_VOICE_LANG` | transcription language hint, e.g. `en`; default auto-detect |
 
 ## Next steps
 

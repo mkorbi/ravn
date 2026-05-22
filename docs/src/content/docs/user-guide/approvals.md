@@ -13,7 +13,7 @@ run silently; Write and Exec tools are gated by an inline modal.
 | Level | Examples | Behavior |
 |---|---|---|
 | `Read` | `file_read`, `web_fetch`, `session_search`, `datetime`, `skill_list`, `skill_view` | Always runs |
-| `Write` | `file_write`, `memory_save` | Modal — approve once, allow always, deny, or cancel |
+| `Write` | `file_write`, `memory_save`, `world_write` | Modal — approve once, allow always, deny, or cancel |
 | `Exec` | `shell` | Modal — same controls |
 
 MCP tools default to `Write` unless the server config overrides them

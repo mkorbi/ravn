@@ -36,13 +36,16 @@ the cli wires them up.
 |---|---|
 | `ravn-llm` | `LlmProvider` trait + OpenAI / Anthropic adapters via [rig-core](https://github.com/0xPlaygrounds/rig). Streaming, cache control, pricing, prompt assembly. |
 | `ravn-core` | The ReAct loop. Drives an `Agent` from a `RunContext` to a `RunSummary`, emitting `LoopEvent`s through an `EventSink`. Budget + cancellation. |
-| `ravn-tools` | The `Tool` trait + 9 native tools + the `Approver` abstraction + the registry. |
+| `ravn-tools` | The `Tool` trait + 10 native tools + the `Approver` abstraction + the registry. |
 | `ravn-memory` | Semantic memory (soul / memory / user Markdown files) and token-budget enforcement. Working / episodic / procedural layers are stubs for later phases. |
 | `ravn-embeddings` | `Embedder` wrapping fastembed's EmbeddingGemma-300M. 768-dim ONNX. Lazy-loaded, single-process. |
 | `ravn-mcp` | MCP client via [rmcp](https://github.com/modelcontextprotocol/rust-sdk) 1.x. Each MCP tool wraps as a `ravn_tools::Tool` impl. |
 | `ravn-skills` | YAML-frontmatter parser + filesystem → DB sync with SHA-256 change detection. |
-| `ravn-persistence` | sqlx for normal CRUD; rusqlite + sqlite-vec for vector ops. WAL mode, append-only events. |
-| `ravn-cli` | The TUI. Approver, splash, slash-commands, input buffer. The only crate that depends on every other crate. |
+| `ravn-persistence` | sqlx for normal CRUD; rusqlite + sqlite-vec for vector ops. WAL mode, append-only events. Also the typed `world_state`. |
+| `ravn-orchestration` | Typed `StateGraph` + per-node checkpoints (`postcard` in the `events` table) for crash-resume. |
+| `ravn-heartbeat` | Cron scheduler (`tokio-cron-scheduler`) firing unattended runs from `heartbeats.toml`, gated by a per-job allowlist. |
+| `ravn-eval` | Hand-crafted eval set + LLM-as-judge runner. |
+| `ravn-cli` | The TUI. Approver, splash, slash-commands, input buffer, heartbeat wiring. The only crate that depends on every other crate. |
 
 ## Data flow on a user turn
 
@@ -51,9 +54,10 @@ the cli wires them up.
    locally and stop.
 3. Otherwise, build a `RunContext` (semantic memory, history, the user
    turn) and spawn `Agent::run` on a tokio task.
-4. The agent assembles a cache-stable prompt via `PromptBuilder`
-   (tools → system → soul → memory → user → history → user turn),
-   sends it to the provider.
+4. A per-step router picks a reasoning Mode (Fast / Deep / Reflect),
+   then the agent assembles a cache-stable prompt via `PromptBuilder`
+   (tools → system → skills → memory → world state → soul → user →
+   history → user turn) and sends it to the provider.
 5. The streamed response goes through `stream_one_turn`: text deltas
    flow back to the TUI immediately, tool-use blocks buffer.
 6. After the stream ends, each tool-use goes through the approver,
