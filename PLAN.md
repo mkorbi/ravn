@@ -338,7 +338,7 @@ Phase 1 ist abgenommen wenn:
 - [ ] **5.3** Auth für MCP-Server (Bearer-Token, IP-Allowlist).
 - [ ] **5.4** A2A-Endpoint: Agent Card (JSON), `/tasks`/`/messages`/`/artifacts` via JSON-RPC 2.0 über HTTPS.
 - [ ] **5.5** A2A-Authentication (OAuth2/OIDC).
-- [ ] **5.6** Multimodal-Input: `MultiModalMessage`-Enum (`Text|Image|Audio`), Image-OCR via Vision-Model.
+- [x] **5.6** Multimodal-Input: `MultiModalMessage`-Enum (`Text|Image|Audio`), Image-OCR via Vision-Model. → `ContentBlock::Image` (`ImageContent` Url|Base64) → rig `UserContent::Image` (Anthropic/OpenAI); `/image <path|url>` staged-attach in der TUI. (Audio-In bereits via `/voice`; Video out-of-scope.)
 - [ ] **5.7** A2A-Client-Side: Discover + Call externer A2A-Agents.
 
 ### Akzeptanzkriterien

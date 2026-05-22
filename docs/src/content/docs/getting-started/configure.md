@@ -168,6 +168,22 @@ auto-detection. Voice support requires building with **cmake + a C/C++
 compiler** (see [Install](/ravn/getting-started/install/)); on macOS the first
 recording triggers a microphone-permission prompt.
 
+## Image input
+
+`/image <path|url>` (alias `/img`) attaches an image to your **next** message —
+a 📎 chip shows in the status line until you send. Local files are read and
+base64-encoded (png/jpg/gif/webp); `http(s)://` URLs are passed through. The
+vision-capable model (Claude Sonnet 4.6 / GPT-4o) reads it — so this doubles as
+OCR ("what does this screenshot say?").
+
+```
+/image ~/Desktop/diagram.png
+> explain this architecture
+```
+
+Send with no text to use a default ask. (An attached image rides along in the
+conversation history, so it's re-sent on later turns — keep image chats short.)
+
 ## Embedding model
 
 First time a message gets embedded, ravn downloads
