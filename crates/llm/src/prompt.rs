@@ -8,9 +8,10 @@
 //! 2. **System**           — persona, instructions, frozen.
 //! 3. **Skills metadata**  — list of skill descriptors (Phase 2+).
 //! 4. **MEMORY.md**        — long-term curated facts.
-//! 5. **SOUL.md** + **USER.md** — persona and user model.
-//! 6. **History**          — prior assistant/user turns.
-//! 7. **User turn**        — the new prompt (always last).
+//! 5. **World state**      — durable projects/tabs/watch-targets (Phase 4.11).
+//! 6. **SOUL.md** + **USER.md** — persona and user model.
+//! 7. **History**          — prior assistant/user turns.
+//! 8. **User turn**        — the new prompt (always last).
 //!
 //! `PromptBuilder` enforces this order at the type level via consuming
 //! setters; once you call a later-stage method, the earlier-stage methods
@@ -33,6 +34,7 @@ pub struct PromptBuilder {
     system: Option<String>,
     skills_meta: Option<String>,
     memory_md: Option<String>,
+    world_md: Option<String>,
     soul_md: Option<String>,
     user_md: Option<String>,
     history: Vec<Message>,
@@ -46,6 +48,7 @@ impl PromptBuilder {
             system: None,
             skills_meta: None,
             memory_md: None,
+            world_md: None,
             soul_md: None,
             user_md: None,
             history: Vec::new(),
@@ -70,6 +73,13 @@ impl PromptBuilder {
 
     pub fn memory_md(mut self, body: impl Into<String>) -> Self {
         self.memory_md = Some(body.into());
+        self
+    }
+
+    /// Durable world state (Phase 4.11) — projects, open tabs, watch targets.
+    /// Sits with the curated facts: after MEMORY.md, before SOUL/USER.
+    pub fn world_md(mut self, body: impl Into<String>) -> Self {
+        self.world_md = Some(body.into());
         self
     }
 
@@ -110,6 +120,7 @@ impl PromptBuilder {
             system,
             skills_meta,
             memory_md,
+            world_md,
             soul_md,
             user_md,
             history,
@@ -120,6 +131,7 @@ impl PromptBuilder {
             system.as_deref(),
             skills_meta.as_deref(),
             memory_md.as_deref(),
+            world_md.as_deref(),
             soul_md.as_deref(),
             user_md.as_deref(),
         );
@@ -174,6 +186,7 @@ fn assemble_system(
     base: Option<&str>,
     skills_meta: Option<&str>,
     memory_md: Option<&str>,
+    world_md: Option<&str>,
     soul_md: Option<&str>,
     user_md: Option<&str>,
 ) -> Option<String> {
@@ -181,6 +194,7 @@ fn assemble_system(
     parts.extend(base);
     parts.extend(skills_meta);
     parts.extend(memory_md);
+    parts.extend(world_md);
     parts.extend(soul_md);
     parts.extend(user_md);
 
@@ -202,6 +216,7 @@ mod tests {
             .system("you are helpful")
             .skills_meta("- git-workflow")
             .memory_md("user works in rust")
+            .world_md("tracking-project-ravn")
             .soul_md("persona-x")
             .user_md("max likes brevity")
             .history(vec![Message::user("earlier turn")])
@@ -215,7 +230,8 @@ mod tests {
         let idx = |needle: &str| sys.find(needle).expect("found");
         assert!(idx("you are helpful") < idx("- git-workflow"));
         assert!(idx("- git-workflow") < idx("user works in rust"));
-        assert!(idx("user works in rust") < idx("persona-x"));
+        assert!(idx("user works in rust") < idx("tracking-project-ravn"));
+        assert!(idx("tracking-project-ravn") < idx("persona-x"));
         assert!(idx("persona-x") < idx("max likes brevity"));
 
         // History sandwiched, user_turn last.
