@@ -109,6 +109,15 @@ async fn main() -> anyhow::Result<()> {
     let mut registry = ToolRegistry::new();
     native::register_defaults(&mut registry, data_dir.clone(), Some(embedder.clone()));
 
+    // A2A client (Phase 5.7): `call_agent` lets the agent delegate to external
+    // A2A peers configured in ~/.ravn/a2a.toml. Write-permission (gated).
+    let a2a_config = ravn_a2a::config::A2aConfig::load(&data_dir.join("a2a.toml"))
+        .await
+        .unwrap_or_default();
+    registry.register_arc(std::sync::Arc::new(ravn_a2a::CallAgentTool::new(
+        std::sync::Arc::new(a2a_config),
+    )));
+
     // Load configured MCP servers (Phase 2.1/2.2). The returned
     // connections own the subprocesses — keep them alive for the
     // program lifetime; dropping closes them.

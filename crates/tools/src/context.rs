@@ -61,6 +61,37 @@ impl Approver for DenyAll {
     }
 }
 
+/// Approver that allows only a fixed set of tool names (plus all Read tools,
+/// which never reach the approver). Everything else is denied + logged. Used
+/// by unattended/remote entrypoints (heartbeats, the A2A server) where there's
+/// no human to consult: the allowlist *is* the gate. An empty set ⇒ read-only.
+pub struct AllowlistApprover {
+    allow: std::collections::HashSet<String>,
+}
+
+impl AllowlistApprover {
+    pub fn new(allow: std::collections::HashSet<String>) -> Self {
+        Self { allow }
+    }
+}
+
+#[async_trait]
+impl Approver for AllowlistApprover {
+    async fn approve(
+        &self,
+        tool: &str,
+        _args: &serde_json::Value,
+        permission: Permission,
+    ) -> ApprovalDecision {
+        if self.allow.contains(tool) {
+            ApprovalDecision::Allow
+        } else {
+            tracing::warn!(tool, ?permission, "denied: tool not in allowlist");
+            ApprovalDecision::Deny
+        }
+    }
+}
+
 /// Per-invocation environment handed to every [`crate::Tool::invoke`].
 ///
 /// Holds the DB handle for persistence access, the session correlation

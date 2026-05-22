@@ -333,13 +333,13 @@ Phase 1 ist abgenommen wenn:
 **Abhängigkeit**: Phase 4 abgeschlossen.
 
 ### Tasks
-- [ ] **5.1** `bin/agent-mcp`: `rmcp`-Server-Mode mit stdio+HTTP-Transport.
-- [ ] **5.2** Selektive Tool-Exposure (config-driven, default deny).
+- [x] **5.1** `bin/agent-mcp`: `rmcp`-Server-Mode mit stdio+HTTP-Transport. → `crates/mcp-server` (`agent-mcp` bin), **stdio** fertig; HTTP-Transport verschoben (mit 5.3 Auth).
+- [x] **5.2** Selektive Tool-Exposure (config-driven, default deny). → `~/.ravn/mcp-server.toml` `expose=[…]`; nur `Read`-Tools (Write/Exec gefiltert).
 - [ ] **5.3** Auth für MCP-Server (Bearer-Token, IP-Allowlist).
-- [ ] **5.4** A2A-Endpoint: Agent Card (JSON), `/tasks`/`/messages`/`/artifacts` via JSON-RPC 2.0 über HTTPS.
-- [ ] **5.5** A2A-Authentication (OAuth2/OIDC).
-- [x] **5.6** Multimodal-Input: `MultiModalMessage`-Enum (`Text|Image|Audio`), Image-OCR via Vision-Model. → `ContentBlock::Image` (`ImageContent` Url|Base64) → rig `UserContent::Image` (Anthropic/OpenAI); `/image <path|url>` staged-attach in der TUI. (Audio-In bereits via `/voice`; Video out-of-scope.)
-- [ ] **5.7** A2A-Client-Side: Discover + Call externer A2A-Agents.
+- [x] **5.4** A2A-Endpoint: Agent Card (JSON), `/tasks`/`/messages`/`/artifacts` via JSON-RPC 2.0 über HTTPS. → `crates/a2a` (`a2a-serve`), Agent Card + `message/send` + `message/stream` (SSE) + `tasks/get|cancel`; HTTP (HTTPS via Reverse-Proxy).
+- [x] **5.5** A2A-Authentication (OAuth2/OIDC). → optionaler `[auth]`-Block, JWT-Validierung gegen JWKS (issuer/audience/expiry/scopes) via `jsonwebtoken`.
+- [ ] **5.6** Multimodal-Input: `MultiModalMessage`-Enum (`Text|Image|Audio`), Image-OCR via Vision-Model.
+- [x] **5.7** A2A-Client-Side: Discover + Call externer A2A-Agents. → `A2aClient` (Card-Discovery + `message/send`, OAuth2 client-credentials) + `call_agent`-Tool (von der CLI registriert).
 
 ### Akzeptanzkriterien
 - Externer MCP-Client (Claude Desktop) findet unsere Tools via stdio.
