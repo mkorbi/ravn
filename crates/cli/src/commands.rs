@@ -10,6 +10,8 @@ pub enum SlashCommand {
     Quit,
     Heartbeat(HeartbeatAction),
     Voice,
+    /// Stage an image (path or URL) for the next turn (Phase 5.6).
+    Image(String),
     Unknown(String),
 }
 
@@ -66,6 +68,15 @@ impl SlashCommand {
                 SlashCommand::Heartbeat(action)
             }
             "voice" | "v" => SlashCommand::Voice,
+            "image" | "img" => {
+                // Everything after the command word is the path/url (kept
+                // intact so paths with spaces work).
+                let arg = body
+                    .split_once(char::is_whitespace)
+                    .map(|(_, r)| r.trim().to_string())
+                    .unwrap_or_default();
+                SlashCommand::Image(arg)
+            }
             other => SlashCommand::Unknown(other.to_string()),
         })
     }
@@ -184,6 +195,25 @@ impl SlashCommand {
                     }
                 }
             }
+            SlashCommand::Image(arg) => {
+                if arg.is_empty() {
+                    app.messages.push(notice("usage: /image <path-or-url>"));
+                    return;
+                }
+                // Reading + base64-encoding is async; do it off the UI loop and
+                // stage the result via an event.
+                let label = image_label(&arg);
+                let tx = app.events.clone();
+                tokio::spawn(async move {
+                    let event = match ravn_llm::ImageContent::from_path_or_url(&arg).await {
+                        Ok(image) => AppEvent::ImageStaged { image, label },
+                        Err(e) => AppEvent::Notice {
+                            text: format!("image: {e}"),
+                        },
+                    };
+                    let _ = tx.send(event).await;
+                });
+            }
             SlashCommand::Unknown(name) => {
                 app.messages.push(DisplayedMessage {
                     role: DisplayRole::Notice,
@@ -194,6 +224,15 @@ impl SlashCommand {
     }
 }
 
+/// Last path/URL segment, for the 📎 chip label.
+fn image_label(arg: &str) -> String {
+    arg.rsplit(['/', '\\'])
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(arg)
+        .to_string()
+}
+
 const HELP_TEXT: &str = "available slash-commands:\n  \
 /help                  list slash-commands\n  \
 /about                 reprint the startup splash\n  \
@@ -202,6 +241,7 @@ const HELP_TEXT: &str = "available slash-commands:\n  \
 /heartbeat run <name>  fire a heartbeat job now\n  \
 /heartbeat reload      re-read ~/.ravn/heartbeats.toml\n  \
 /voice, /v             toggle mic recording → transcript into the input\n  \
+/image <path|url>      attach an image to your next message\n  \
 /quit, /exit           close ravn\n\n\
 non-slash input is sent to the model.";
 

@@ -17,6 +17,7 @@ thiserror.workspace = true
 tracing.workspace = true
 futures.workspace = true
 async-stream = "0.3"
+base64.workspace = true
 
 # D1: rig-core as provider backend.
 rig-core.workspace = true

@@ -631,6 +631,8 @@ fn extract_text(blocks: &[ContentBlock]) -> String {
             ContentBlock::Text { text } => parts.push(text.as_str()),
             ContentBlock::ToolResult { content, .. } => parts.push(content.as_str()),
             ContentBlock::ToolUse { .. } | ContentBlock::Thinking { .. } => {}
+            // Images carry no searchable text.
+            ContentBlock::Image { .. } => {}
         }
     }
     parts.join("\n")

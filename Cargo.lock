@@ -3772,6 +3772,7 @@ version = "0.0.1"
 dependencies = [
  "async-stream",
  "async-trait",
+ "base64 0.22.1",
  "futures",
  "rig-core",
  "schemars 0.8.22",

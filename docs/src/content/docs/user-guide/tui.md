@@ -64,6 +64,7 @@ Lines starting with `/` are handled locally — no LLM round-trip.
 | `/clear` | `/cls` | Wipe the scrollback (session keeps running) |
 | `/heartbeat` | `/hb` | `list` jobs, `run <name>` now, or `reload` `heartbeats.toml` |
 | `/voice` | `/v` | Toggle mic recording → transcript dropped into the input line |
+| `/image` | `/img` | Attach an image (path or URL) to your next message |
 | `/quit` | `/exit`, `/q` | Close ravn |
 
 Slash-commands are case-insensitive.
