@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use ravn_core::{LoopEvent, RunSummary};
 use ravn_heartbeat::Scheduler;
-use ravn_llm::{Message, Role};
+use ravn_llm::{ImageContent, Message, Role};
 use ravn_memory::SemanticMemory;
 use ravn_persistence::Db;
 use ravn_tools::Permission;
@@ -50,6 +50,8 @@ pub enum AppEvent {
     /// A finished voice transcription (Phase 4.7) — dropped into the input
     /// buffer for the user to review and send.
     Transcript { text: String },
+    /// An image staged via `/image` (Phase 5.6) — attached to the next turn.
+    ImageStaged { image: ImageContent, label: String },
 }
 
 /// Microphone recorder + Whisper transcriber, shared with the async task that
@@ -103,6 +105,11 @@ pub struct App {
     pub recording: bool,
     /// Voice capture + transcription, if available.
     pub voice: Option<Arc<VoiceHandle>>,
+
+    /// Image staged via `/image` (Phase 5.6), attached to the next turn.
+    pub pending_image: Option<ImageContent>,
+    /// Human-readable label for the staged image (shown as a 📎 chip).
+    pub pending_image_label: Option<String>,
 }
 
 impl App {
@@ -147,6 +154,8 @@ impl App {
             hb,
             recording: false,
             voice,
+            pending_image: None,
+            pending_image_label: None,
         }
     }
 
@@ -163,16 +172,28 @@ impl App {
 
     pub fn push_user_input(&mut self) -> Option<Message> {
         let text = self.input.take();
-        let trimmed = text.trim();
-        if trimmed.is_empty() {
+        let owned = text.trim().to_string();
+        // Allow an image-only turn (empty text + a staged image).
+        if owned.is_empty() && self.pending_image.is_none() {
             return None;
         }
-        let owned = trimmed.to_string();
+        let label = self.pending_image_label.take();
+        let display = match (&label, owned.is_empty()) {
+            (Some(l), true) => format!("[📎 {l}]"),
+            (Some(l), false) => format!("{owned}  [📎 {l}]"),
+            (None, _) => owned.clone(),
+        };
         self.messages.push(DisplayedMessage {
             role: DisplayRole::User,
-            text: owned.clone(),
+            text: display,
         });
-        Some(Message::user(owned))
+        match self.pending_image.take() {
+            Some(image) => {
+                let text = if owned.is_empty() { None } else { Some(owned) };
+                Some(Message::user_multimodal(text, vec![image]))
+            }
+            None => Some(Message::user(owned)),
+        }
     }
 
     pub fn apply(&mut self, event: AppEvent) {
@@ -215,6 +236,14 @@ impl App {
                 } else {
                     self.input.insert_str(&text);
                 }
+            }
+            AppEvent::ImageStaged { image, label } => {
+                self.pending_image = Some(image);
+                self.pending_image_label = Some(label.clone());
+                self.messages.push(DisplayedMessage {
+                    role: DisplayRole::Notice,
+                    text: format!("📎 image staged: {label} — type a message (or just Enter) to send it"),
+                });
             }
         }
     }

@@ -22,7 +22,7 @@ pub(crate) mod rig_bridge;
 pub use pricing::cost as compute_cost;
 pub use prompt::PromptBuilder;
 
-pub use message::{ContentBlock, Message, Role};
+pub use message::{ContentBlock, ImageContent, Message, Role};
 pub use provider::{Error, LlmProvider};
 pub use request::{
     CacheBreakpoint, CachePosition, CacheTtl, CompletionRequest, ReasoningEffort, ToolSchema,

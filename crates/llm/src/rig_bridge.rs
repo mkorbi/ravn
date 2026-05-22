@@ -4,9 +4,9 @@
 //! translation surface in one place.
 
 use rig_core::completion::message::{
-    AssistantContent as RigAssistantContent, ReasoningContent as RigReasoningContent,
-    Text as RigText, ToolCall, ToolFunction, ToolResult, ToolResultContent,
-    UserContent as RigUserContent,
+    AssistantContent as RigAssistantContent, DocumentSourceKind, Image as RigImage, ImageMediaType,
+    ReasoningContent as RigReasoningContent, Text as RigText, ToolCall, ToolFunction, ToolResult,
+    ToolResultContent, UserContent as RigUserContent,
 };
 use rig_core::completion::{
     CompletionRequest as RigCompletionRequest, Message as RigMessage,
@@ -14,7 +14,7 @@ use rig_core::completion::{
 };
 use rig_core::one_or_many::OneOrMany;
 
-use crate::message::{ContentBlock, Message, Role};
+use crate::message::{ContentBlock, ImageContent, Message, Role};
 use crate::provider::Error;
 use crate::request::{CompletionRequest, ReasoningEffort, ToolSchema};
 use crate::response::Usage;
@@ -92,6 +92,9 @@ pub fn to_rig_message(m: Message) -> Result<RigMessage, Error> {
                             })),
                         }));
                     }
+                    ContentBlock::Image { image } => {
+                        items.push(RigUserContent::Image(to_rig_image(image)));
+                    }
                     ContentBlock::ToolUse { .. } | ContentBlock::Thinking { .. } => {
                         return Err(Error::InvalidRequest(
                             "tool_use/thinking blocks not valid on user/tool message".into(),
@@ -122,6 +125,11 @@ pub fn to_rig_message(m: Message) -> Result<RigMessage, Error> {
                             rig_core::completion::message::Reasoning::new_with_signature(
                                 &thinking, signature,
                             ),
+                        ));
+                    }
+                    ContentBlock::Image { .. } => {
+                        return Err(Error::InvalidRequest(
+                            "image not valid on assistant message".into(),
                         ));
                     }
                     ContentBlock::ToolResult { .. } => {
@@ -192,6 +200,34 @@ fn collect_text(blocks: &[ContentBlock]) -> String {
         .join("\n")
 }
 
+/// Map our [`ImageContent`] to rig's `Image` (Phase 5.6).
+fn to_rig_image(image: ImageContent) -> RigImage {
+    match image {
+        ImageContent::Url { url } => RigImage {
+            data: DocumentSourceKind::Url(url),
+            media_type: None,
+            detail: None,
+            additional_params: None,
+        },
+        ImageContent::Base64 { media_type, data } => RigImage {
+            data: DocumentSourceKind::Base64(data),
+            media_type: rig_media_type(&media_type),
+            detail: None,
+            additional_params: None,
+        },
+    }
+}
+
+fn rig_media_type(mime: &str) -> Option<ImageMediaType> {
+    match mime {
+        "image/png" => Some(ImageMediaType::PNG),
+        "image/jpeg" => Some(ImageMediaType::JPEG),
+        "image/gif" => Some(ImageMediaType::GIF),
+        "image/webp" => Some(ImageMediaType::WEBP),
+        _ => None,
+    }
+}
+
 pub fn openai_reasoning_param(eff: ReasoningEffort) -> serde_json::Value {
     let s = match eff {
         ReasoningEffort::Low => "low",
@@ -259,5 +295,28 @@ pub fn classify_completion_error(
             message: s,
             retry_after: None,
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn user_image_maps_to_rig_image() {
+        let m = Message::user_multimodal(
+            Some("hi".into()),
+            vec![ImageContent::Url {
+                url: "https://x/y.png".into(),
+            }],
+        );
+        match to_rig_message(m).unwrap() {
+            RigMessage::User { content } => {
+                assert!(content
+                    .iter()
+                    .any(|c| matches!(c, RigUserContent::Image(_))));
+            }
+            _ => panic!("expected a user message"),
+        }
     }
 }

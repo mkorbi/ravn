@@ -150,8 +150,12 @@ fn render_status(frame: &mut Frame<'_>, area: Rect, app: &App) {
         None => "  --".into(),
     };
     let rec = if app.recording { "🎙 REC │ " } else { "" };
+    let img = match &app.pending_image_label {
+        Some(label) => format!("📎 {label} │ "),
+        None => String::new(),
+    };
     let status = format!(
-        " {rec}session {} │ in {} out {} cache_r {} hit {} │ ${:.4} ",
+        " {rec}{img}session {} │ in {} out {} cache_r {} hit {} │ ${:.4} ",
         short_id(&app.session_id),
         app.input_tokens,
         app.output_tokens,
