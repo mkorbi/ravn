@@ -6,6 +6,7 @@ members = [
     "crates/heartbeat",
     "crates/llm",
     "crates/mcp",
+    "crates/mcp-server",
     "crates/memory",
     "crates/orchestration",
     "crates/persistence",

@@ -3672,6 +3672,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "ravn-mcp-server"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "dirs 5.0.1",
+ "ravn-embeddings",
+ "ravn-persistence",
+ "ravn-tools",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "ravn-memory"
 version = "0.0.1"
 dependencies = [
