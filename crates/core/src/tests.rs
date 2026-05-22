@@ -354,6 +354,122 @@ async fn budget_max_steps_trips() {
 }
 
 #[tokio::test]
+async fn subagent_delegates_to_sub_loop() {
+    use crate::subagent::{SubagentTool, SUBAGENT_TOOL_NAME};
+    use ravn_persistence::Db;
+
+    // Parent provider script: assistant calls subagent_delegate once,
+    // then summarizes after seeing the sub-agent's result. Two turns.
+    // Sub provider script: assistant just answers the goal directly,
+    // no tool use. One turn.
+    //
+    // We give the parent's MockProvider 3 scripts so the sub-agent's
+    // single call also pulls from the same script queue (the
+    // MockProvider is shared between parent and sub).
+    let scripts = vec![
+        // turn 1 (parent): call subagent_delegate
+        vec![
+            StreamChunk::ToolUseStart {
+                id: "toolu_sub".into(),
+                name: SUBAGENT_TOOL_NAME.into(),
+            },
+            StreamChunk::ToolUseDelta {
+                partial_json: r#"{"goal":"count to three"}"#.into(),
+            },
+            StreamChunk::ToolUseEnd,
+            StreamChunk::Done {
+                finish_reason: FinishReason::ToolUse,
+            },
+        ],
+        // turn 1 (sub-agent): plain text answer
+        vec![
+            StreamChunk::TextDelta("one two three.".into()),
+            StreamChunk::Done {
+                finish_reason: FinishReason::Stop,
+            },
+        ],
+        // turn 2 (parent): final answer
+        vec![
+            StreamChunk::TextDelta("sub said: counted.".into()),
+            StreamChunk::Done {
+                finish_reason: FinishReason::Stop,
+            },
+        ],
+    ];
+
+    let db = Db::open_in_memory().await.unwrap();
+    ravn_persistence::sessions::create(&db, "sess-1", "test", Some("mock"))
+        .await
+        .unwrap();
+    let provider: Arc<dyn ravn_llm::LlmProvider> = Arc::new(MockProvider::new(scripts));
+
+    // The sub-agent's tool surface is empty here (no Read tools needed
+    // for "count to three"). It explicitly does NOT include
+    // SubagentTool itself — that's the D17 nested-prevention.
+    let sub_tools = Arc::new(ToolRegistry::new());
+
+    // Parent registry: only SubagentTool. We give the sub-agent the
+    // same shared provider.
+    let mut parent_tools = ToolRegistry::new();
+    parent_tools.register(
+        SubagentTool::new(
+            provider.clone(),
+            sub_tools,
+            Arc::new(AllowAll),
+            db.clone(),
+            "mock-model",
+        ),
+    );
+
+    let agent = Agent::new(
+        provider,
+        Arc::new(parent_tools),
+        Arc::new(AllowAll),
+        db.clone(),
+    );
+
+    let config = AgentConfig {
+        budget: Budget {
+            max_steps: 5,
+            ..Budget::default()
+        },
+        ..AgentConfig::new("mock-model")
+    };
+    let ctx = RunContext {
+        session_id: "sess-1".into(),
+        trace_id: "trace-1".into(),
+        semantic: SemanticMemory::default(),
+        history: Vec::new(),
+        user_turn: Message::user("delegate the counting"),
+    };
+    let cancel = CancellationToken::new();
+    let (tx, mut rx) = mpsc::channel(64);
+    let sink = Arc::new(ChannelSink::new(tx));
+
+    let summary = agent.run(&config, ctx, sink, cancel).await.unwrap();
+
+    // Parent agent saw the sub-agent's result and finalized.
+    assert_eq!(summary.final_text, "sub said: counted.");
+
+    // Tool events show subagent_delegate ran exactly once.
+    let events = collect_recv(&mut rx).await;
+    let sub_starts: usize = events
+        .iter()
+        .filter(|e| matches!(e, LoopEvent::ToolStart { name, .. } if name == SUBAGENT_TOOL_NAME))
+        .count();
+    assert_eq!(sub_starts, 1);
+
+    // Sub-session row was persisted (channel = "subagent").
+    let recent =
+        ravn_persistence::sessions::recent(&db, 10).await.unwrap();
+    let sub_sessions: Vec<_> = recent
+        .iter()
+        .filter(|s| s.channel == "subagent")
+        .collect();
+    assert_eq!(sub_sessions.len(), 1);
+}
+
+#[tokio::test]
 async fn router_emits_mode_change_per_step() {
     // Plain happy-path: step 1 should classify as Fast (D15 heuristic).
     let scripts = vec![vec![

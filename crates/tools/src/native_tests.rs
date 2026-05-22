@@ -278,6 +278,27 @@ async fn permissions_match_phase1_spec() {
 }
 
 #[tokio::test]
+async fn read_only_subset_drops_write_exec_and_excluded_names() {
+    let mut reg = ToolRegistry::new();
+    let dir = TempDir::new().unwrap();
+    register_defaults(&mut reg, dir.path().to_path_buf(), no_embedder());
+    // Pretend subagent_delegate is registered too (we test exclude
+    // semantics on a real Read-tool here).
+    let sub = reg.read_only_subset(&["session_search"]);
+    let names: std::collections::HashSet<_> = sub.names().collect();
+    // Read tools that survive (datetime/file_read/web_fetch/skill_*)
+    assert!(names.contains("file_read"));
+    assert!(names.contains("datetime"));
+    assert!(names.contains("skill_list"));
+    // Excluded by name.
+    assert!(!names.contains("session_search"));
+    // Excluded by permission.
+    assert!(!names.contains("file_write"));
+    assert!(!names.contains("shell"));
+    assert!(!names.contains("memory_save"));
+}
+
+#[tokio::test]
 async fn as_schemas_produces_jsonschema_per_tool() {
     let mut reg = ToolRegistry::new();
     let dir = TempDir::new().unwrap();

@@ -44,6 +44,24 @@ impl ToolRegistry {
         self.tools.is_empty()
     }
 
+    /// Build a registry containing only Read-permission tools, optionally
+    /// excluding specific tool names. Used by `subagent::delegate` to
+    /// hand a sub-agent a strictly less-privileged tool surface
+    /// (Phase 3.10, D17 nested-subagent prevention).
+    pub fn read_only_subset(&self, exclude_names: &[&str]) -> ToolRegistry {
+        let mut out = ToolRegistry::new();
+        for (name, tool) in &self.tools {
+            if tool.permission() != crate::Permission::Read {
+                continue;
+            }
+            if exclude_names.contains(name) {
+                continue;
+            }
+            out.tools.insert(name, tool.clone());
+        }
+        out
+    }
+
     /// Render the registry as `ToolSchema` values ready for inclusion in a
     /// [`ravn_llm::CompletionRequest`].
     pub fn as_schemas(&self) -> Vec<ToolSchema> {
