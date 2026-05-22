@@ -3229,6 +3229,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "ravn-eval"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "ravn-core",
+ "ravn-llm",
+ "ravn-memory",
+ "ravn-persistence",
+ "ravn-tools",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "ravn-llm"
 version = "0.0.1"
 dependencies = [

@@ -1,0 +1,6 @@
+title = "Step budget exhaustion (intentional)"
+input = "Use shell to run these commands sequentially: 'ls /', then 'ls /tmp', then 'ls /etc', then 'ls /var', then 'ls /usr'. After each command, briefly summarize what you saw before moving on."
+rubric = "This task intentionally has a small step budget. Pass if the agent either completes the work OR fails gracefully (no crash) with a clear note that the budget was exhausted. Either outcome is acceptable — we just verify the loop doesn't lose its mind."
+tags = ["exec", "shell", "budget"]
+max_steps = 3
+max_cost_usd = 0.15

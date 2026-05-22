@@ -1,0 +1,6 @@
+title = "Multi-step: fetch then summarize formally"
+input = "Fetch https://example.com and tell me, in a single bullet-list of at most 3 bullets, what's on the page."
+rubric = "Response is formatted as a bulleted list (lines starting with - or *). At most 3 bullets. Each bullet relates to content actually on example.com (page title, single paragraph, IANA reference, link). Mention of 'Example Domain' is a strong signal of real fetch."
+tags = ["read", "tools", "web", "multi-step"]
+max_steps = 4
+max_cost_usd = 0.10

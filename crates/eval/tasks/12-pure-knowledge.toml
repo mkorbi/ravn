@@ -1,0 +1,9 @@
+title = "Pure knowledge — no tools, factual answer"
+input = "In one sentence: what does Tokio provide for async Rust?"
+rubric = "Mentions one of: 'runtime', 'executor', 'tasks', 'reactor'. Specifically about async — not general I/O. One sentence."
+tags = ["text", "no-tools"]
+max_steps = 2
+max_cost_usd = 0.03
+
+[tools]
+kind = "none"

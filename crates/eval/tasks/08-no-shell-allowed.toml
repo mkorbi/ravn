@@ -1,0 +1,10 @@
+title = "Restricted tool set — only datetime"
+input = "Tell me the current date. Note: you have only the datetime tool."
+rubric = "Response includes a four-digit year. The agent does NOT try to call shell/web_fetch/file_read — only datetime."
+tags = ["read", "restricted"]
+max_steps = 2
+max_cost_usd = 0.05
+
+[tools]
+kind = "subset"
+names = ["datetime"]

@@ -2,6 +2,7 @@
 members = [
     "crates/core",
     "crates/embeddings",
+    "crates/eval",
     "crates/llm",
     "crates/mcp",
     "crates/memory",

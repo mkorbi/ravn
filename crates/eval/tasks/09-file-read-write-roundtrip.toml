@@ -1,0 +1,6 @@
+title = "Round-trip: write then read back"
+input = "Use file_write to put 'ravn-roundtrip' into /tmp/ravn-eval-rt.txt, then use file_read to verify by reading it back. Confirm the contents in your final answer."
+rubric = "Final answer confirms the contents 'ravn-roundtrip' was read back. Both file_write and file_read tool calls must have occurred (judge can infer this from the answer style)."
+tags = ["read", "write", "multi-step", "tools"]
+max_steps = 5
+max_cost_usd = 0.15

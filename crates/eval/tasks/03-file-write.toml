@@ -1,0 +1,6 @@
+title = "Write a file to /tmp"
+input = "Use the file_write tool to create /tmp/ravn-eval-test.txt with the content 'hello from eval'."
+rubric = "The agent says the file was written. It must reference the path /tmp/ravn-eval-test.txt. Pass requires confirmation that the file_write tool was used."
+tags = ["write", "tools", "file"]
+max_steps = 3
+max_cost_usd = 0.10
