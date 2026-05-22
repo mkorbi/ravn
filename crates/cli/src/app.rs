@@ -1,10 +1,15 @@
 //! Application state + event reducer for the ratatui TUI.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use ravn_core::{LoopEvent, RunSummary};
+use ravn_heartbeat::Scheduler;
 use ravn_llm::{Message, Role};
 use ravn_memory::SemanticMemory;
 use ravn_persistence::Db;
 use ravn_tools::Permission;
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::approver::ApprovalRequest;
@@ -39,6 +44,20 @@ pub enum AppEvent {
     Approval(ApprovalRequest),
     RunDone { summary: RunSummary },
     RunError { message: String },
+    /// A system notice to drop into the scrollback — used by heartbeat
+    /// reports and async slash-command results.
+    Notice { text: String },
+    /// A finished voice transcription (Phase 4.7) — dropped into the input
+    /// buffer for the user to review and send.
+    Transcript { text: String },
+}
+
+/// Microphone recorder + Whisper transcriber, shared with the async task that
+/// runs a transcription. Held behind an `Arc` so `/voice` can hand it to a
+/// spawned task.
+pub struct VoiceHandle {
+    pub recorder: ravn_voice::Recorder,
+    pub transcriber: ravn_voice::Transcriber,
 }
 
 pub struct App {
@@ -70,6 +89,20 @@ pub struct App {
 
     pub should_quit: bool,
     pub cancel: Option<CancellationToken>,
+
+    /// True while an interactive (user-typed) run is streaming. The
+    /// heartbeat scheduler reads this to skip firing over a live turn.
+    pub interactive_active: Arc<AtomicBool>,
+    /// Channel back into the event loop, so async slash-commands (e.g.
+    /// `/heartbeat`) can post their results as [`AppEvent::Notice`].
+    pub events: mpsc::Sender<AppEvent>,
+    /// Heartbeat scheduler handle, if it started successfully.
+    pub hb: Option<Arc<Scheduler>>,
+
+    /// True while the mic is capturing (Phase 4.7). Rendered as a badge.
+    pub recording: bool,
+    /// Voice capture + transcription, if available.
+    pub voice: Option<Arc<VoiceHandle>>,
 }
 
 impl App {
@@ -80,6 +113,10 @@ impl App {
         model: String,
         system_prompt: String,
         semantic: SemanticMemory,
+        interactive_active: Arc<AtomicBool>,
+        events: mpsc::Sender<AppEvent>,
+        hb: Option<Arc<Scheduler>>,
+        voice: Option<Arc<VoiceHandle>>,
     ) -> Self {
         Self {
             db,
@@ -105,6 +142,11 @@ impl App {
             cost_usd: 0.0,
             should_quit: false,
             cancel: None,
+            interactive_active,
+            events,
+            hb,
+            recording: false,
+            voice,
         }
     }
 
@@ -145,6 +187,7 @@ impl App {
                 }
                 self.history = summary.history;
                 self.streaming_active = false;
+                self.interactive_active.store(false, Ordering::Relaxed);
                 self.cancel = None;
             }
             AppEvent::RunError { message } => {
@@ -153,7 +196,25 @@ impl App {
                     self.flush_streaming();
                 }
                 self.streaming_active = false;
+                self.interactive_active.store(false, Ordering::Relaxed);
                 self.cancel = None;
+            }
+            AppEvent::Notice { text } => {
+                self.messages.push(DisplayedMessage {
+                    role: DisplayRole::Notice,
+                    text,
+                });
+            }
+            AppEvent::Transcript { text } => {
+                self.recording = false;
+                if text.is_empty() {
+                    self.messages.push(DisplayedMessage {
+                        role: DisplayRole::Notice,
+                        text: "voice: no speech detected".to_string(),
+                    });
+                } else {
+                    self.input.insert_str(&text);
+                }
             }
         }
     }

@@ -62,6 +62,8 @@ Lines starting with `/` are handled locally — no LLM round-trip.
 | `/help` | `/h`, `/?` | List slash-commands |
 | `/about` |  | Reprint the startup splash |
 | `/clear` | `/cls` | Wipe the scrollback (session keeps running) |
+| `/heartbeat` | `/hb` | `list` jobs, `run <name>` now, or `reload` `heartbeats.toml` |
+| `/voice` | `/v` | Toggle mic recording → transcript dropped into the input line |
 | `/quit` | `/exit`, `/q` | Close ravn |
 
 Slash-commands are case-insensitive.

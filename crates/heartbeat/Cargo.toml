@@ -1,5 +1,5 @@
 [package]
-name = "ravn-cli"
+name = "ravn-heartbeat"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,32 +7,24 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
-[[bin]]
-name = "ravn"
-path = "src/main.rs"
-
 [dependencies]
 ravn-core.workspace = true
-ravn-embeddings.workspace = true
-ravn-heartbeat.workspace = true
 ravn-llm.workspace = true
-ravn-mcp.workspace = true
 ravn-memory.workspace = true
 ravn-persistence.workspace = true
-ravn-skills.workspace = true
 ravn-tools.workspace = true
-ravn-voice.workspace = true
-
-async-trait.workspace = true
+ravn-embeddings.workspace = true
 
 tokio.workspace = true
 tokio-util.workspace = true
-futures.workspace = true
-anyhow.workspace = true
+tokio-cron-scheduler.workspace = true
+async-trait.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+toml.workspace = true
+thiserror.workspace = true
 tracing.workspace = true
-tracing-subscriber.workspace = true
-ratatui.workspace = true
-crossterm.workspace = true
 uuid.workspace = true
-dirs = "5"
+
+[dev-dependencies]
+tempfile = "3"

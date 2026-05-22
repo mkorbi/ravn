@@ -3,6 +3,7 @@ members = [
     "crates/core",
     "crates/embeddings",
     "crates/eval",
+    "crates/heartbeat",
     "crates/llm",
     "crates/mcp",
     "crates/memory",
@@ -10,6 +11,7 @@ members = [
     "crates/persistence",
     "crates/skills",
     "crates/tools",
+    "crates/voice",
     "crates/cli",
 ]
 resolver = "2"
@@ -68,6 +70,14 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 rmcp = { version = "1", features = ["client", "transport-child-process"] }
 toml = "0.8"
 
+# --- Scheduling (Phase 4.10 heartbeats) ---
+tokio-cron-scheduler = "0.15"
+
+# --- Voice input (Phase 4.7): mic capture + local Whisper STT ---
+cpal = "0.17"
+whisper-rs = "0.16"
+hound = "3"
+
 # --- Skills / Misc ---
 serde_yaml = "0.9"
 sha2 = "0.10"
@@ -76,6 +86,7 @@ postcard = { version = "1", features = ["alloc"] }
 # --- Internal workspace crates ---
 ravn-core = { path = "crates/core" }
 ravn-embeddings = { path = "crates/embeddings" }
+ravn-heartbeat = { path = "crates/heartbeat" }
 ravn-llm = { path = "crates/llm" }
 ravn-mcp = { path = "crates/mcp" }
 ravn-memory = { path = "crates/memory" }
@@ -83,6 +94,7 @@ ravn-orchestration = { path = "crates/orchestration" }
 ravn-persistence = { path = "crates/persistence" }
 ravn-skills = { path = "crates/skills" }
 ravn-tools = { path = "crates/tools" }
+ravn-voice = { path = "crates/voice" }
 
 [profile.dev]
 opt-level = 0

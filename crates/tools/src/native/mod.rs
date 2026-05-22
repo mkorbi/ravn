@@ -1,11 +1,11 @@
 //! Native tools shipped with Phase 1 (1.4).
 //!
-//! 5 Read tools (no approval): [`file_read`], [`web_fetch`],
-//! [`session_search`], [`datetime`], plus any future read-only additions.
-//! 2 Write tools (approval): [`file_write`], [`memory_save`].
-//! 1 Exec tool (approval): [`shell`].
+//! Read tools (no approval): [`file_read`], [`web_fetch`],
+//! [`session_search`], [`datetime`], [`skill_list`], [`skill_view`].
+//! Write tools (approval): [`file_write`], [`memory_save`], [`world_write`].
+//! Exec tool (approval): [`shell`].
 //!
-//! Call [`register_defaults`] to bulk-register all seven into a
+//! Call [`register_defaults`] to bulk-register all native tools into a
 //! [`crate::ToolRegistry`].
 
 use std::path::PathBuf;
@@ -22,6 +22,7 @@ pub mod shell;
 pub mod skill_list;
 pub mod skill_view;
 pub mod web_fetch;
+pub mod world_write;
 
 pub use datetime::DateTime;
 pub use file_read::FileRead;
@@ -32,6 +33,7 @@ pub use shell::Shell;
 pub use skill_list::SkillList;
 pub use skill_view::SkillView;
 pub use web_fetch::WebFetch;
+pub use world_write::WorldWrite;
 
 use crate::ToolRegistry;
 
@@ -50,6 +52,7 @@ pub fn register_defaults(
     reg.register(WebFetch::new());
     reg.register(SessionSearch::new(embedder));
     reg.register(MemorySave { data_dir });
+    reg.register(WorldWrite);
     reg.register(DateTime);
     reg.register(SkillList);
     reg.register(SkillView);

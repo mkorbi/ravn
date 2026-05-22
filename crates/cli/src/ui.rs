@@ -109,6 +109,8 @@ fn render_scrollback(frame: &mut Frame<'_>, area: Rect, app: &App) {
 fn render_input(frame: &mut Frame<'_>, area: Rect, app: &App) {
     let prompt = if app.pending_approval.is_some() {
         "  (approval needed) "
+    } else if app.recording {
+        "  🎙 recording — /voice to stop "
     } else if app.streaming_active {
         "  (streaming — Esc to cancel) "
     } else {
@@ -147,8 +149,9 @@ fn render_status(frame: &mut Frame<'_>, area: Rect, app: &App) {
         Some(r) => format!("{:>3.0}%", r * 100.0),
         None => "  --".into(),
     };
+    let rec = if app.recording { "🎙 REC │ " } else { "" };
     let status = format!(
-        " session {} │ in {} out {} cache_r {} hit {} │ ${:.4} ",
+        " {rec}session {} │ in {} out {} cache_r {} hit {} │ ${:.4} ",
         short_id(&app.session_id),
         app.input_tokens,
         app.output_tokens,

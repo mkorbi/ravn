@@ -21,10 +21,13 @@ loop {
     budget.bump_step()?;     // hard-cap on 50 iterations
     if cancel.is_cancelled() { return Cancelled; }
 
+    let mode = router.classify(step, last_result);   // Fast / Deep / Reflect
+
     let prompt = PromptBuilder::new()
         .tools(registry.as_schemas())
         .system(&config.system_prompt)
-        .soul_md(...).memory_md(...).user_md(...)
+        .memory_md(...).world_md(...).soul_md(...).user_md(...)
+        .reasoning_effort(mode.reasoning_effort())
         .history(history.clone())
         .build(model, next_input, max_tokens);
 
@@ -103,6 +106,25 @@ A trip emits `LoopEvent::BudgetExceeded` and returns
 on the stream and the token), with every tool's `ToolContext`, and
 with the shell subprocess (`kill_on_drop`). Esc → cancel propagates
 in well under a second.
+
+## Reasoning modes, subagents & checkpoints
+
+Three Phase-3 capabilities ride on top of the base loop:
+
+- **Reasoning router (D15).** Before each step a `Router` picks a `Mode` —
+  `Fast`, `Deep`, or `Reflect` — from cheap heuristics (step depth, whether the
+  last tool returned an error). `Deep` maps to Anthropic **extended thinking**
+  (`thinking.budget_tokens`) or OpenAI's `reasoning_effort`; `Reflect` drives a
+  self-critique + re-plan after a failure. Classification spends no extra LLM
+  call — it's deterministic and easy to debug. A classifier-LLM arrives with
+  Phase 6 RL.
+- **Subagents.** A run can delegate a focused sub-task (e.g. "find all callers
+  of `foo`") via `SubagentTool`. The subagent gets a **read-only** tool subset,
+  an isolated `RunContext`, and its own `Budget`, and returns only a summary +
+  token count — never raw context. Nested subagents are hard-disabled.
+- **Checkpoints.** `ravn-orchestration` serializes each `StateGraph` node
+  transition (`postcard`) into the `events` table, so a run killed with
+  `kill -9` resumes from its last checkpoint instead of restarting.
 
 ## Trajectory events
 

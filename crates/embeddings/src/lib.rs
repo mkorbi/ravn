@@ -75,6 +75,18 @@ impl Embedder {
         Self::new(EmbedderConfig::default())
     }
 
+    /// Like [`default_gemma`](Self::default_gemma) but with the Hugging Face
+    /// download progress bar **disabled**. Use this in the TUI: `indicatif`
+    /// writes progress bars straight to the terminal, which corrupts
+    /// ratatui's alternate-screen rendering. Download progress is logged to
+    /// `tracing` instead.
+    pub fn default_gemma_quiet() -> Self {
+        Self::new(EmbedderConfig {
+            show_download_progress: false,
+            ..EmbedderConfig::default()
+        })
+    }
+
     /// Force the model to load now (otherwise it loads lazily on the
     /// first [`embed`]). Useful at startup if you want the
     /// model-download progress bar to appear immediately.
@@ -158,6 +170,13 @@ mod tests {
         assert_eq!(cfg.max_length, 512);
         assert!(cfg.show_download_progress);
         assert_eq!(EMBEDDING_DIM, 768);
+    }
+
+    #[test]
+    fn quiet_constructor_disables_progress_bar() {
+        // The TUI relies on this — a progress bar would corrupt the screen.
+        let e = Embedder::default_gemma_quiet();
+        assert!(!e.config.show_download_progress);
     }
 
     /// Real model call. Ignored by default — downloads ~300 MB on first

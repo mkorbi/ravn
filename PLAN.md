@@ -303,11 +303,11 @@ Phase 1 ist abgenommen wenn:
 - [ ] **4.6** `computer_use::browser` via `chromiumoxide` 0.7+ (direct CDP).
 
 ### Tasks — Multi-Channel
-- [ ] **4.7** Voice-In: `whisper-rs` lokal **oder** OpenAI-Whisper-API.
+- [x] **4.7** Voice-In: `whisper-rs` lokal **oder** OpenAI-Whisper-API. → `crates/voice` (cpal capture + local Whisper), `/voice` slash-command, transcript in den Input-Buffer; Modell lazy-download nach `~/.ravn/whisper/`.
 - [ ] **4.8** Voice-Out: `piper-rs` lokal **oder** ElevenLabs HTTP.
 - [ ] **4.9** Telegram-Bridge via `teloxide` — Pro-User-Session-Mapping.
-- [ ] **4.10** Heartbeat-Scheduler via `tokio-cron-scheduler` — User-definierte Trigger („jeden Morgen 8 Uhr Calendar-Sync").
-- [ ] **4.11** Persistent World State: typed Rust-Struct (`Projects`, `OpenTabs`, `WatchTargets`), serialisiert in SQLite.
+- [x] **4.10** Heartbeat-Scheduler via `tokio-cron-scheduler` — User-definierte Trigger („jeden Morgen 8 Uhr Calendar-Sync"). → `crates/heartbeat` (`heartbeats.toml`, per-job Allowlist-Approver, `/heartbeat` slash-commands).
+- [x] **4.11** Persistent World State: typed Rust-Struct (`Projects`, `OpenTabs`, `WatchTargets`), serialisiert in SQLite. → `ravn_persistence::world` + Prompt-Injection + `world_write`-Tool.
 
 ### Tasks — Tauri-Desktop (parallel zu Computer-Use)
 - [ ] **4.12** `desktop`-Crate mit `tauri` 2.0 anlegen; Frontend in TypeScript+Vite (oder Dioxus-WebView wenn pure-Rust gewünscht — separat entscheiden).

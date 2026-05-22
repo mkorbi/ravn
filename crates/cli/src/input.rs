@@ -30,6 +30,13 @@ impl InputBuffer {
         self.cursor += ch.len_utf8();
     }
 
+    /// Insert a whole string at the cursor (used to drop in a voice
+    /// transcript). `cursor` stays on a char boundary since `s` is valid UTF-8.
+    pub fn insert_str(&mut self, s: &str) {
+        self.text.insert_str(self.cursor, s);
+        self.cursor += s.len();
+    }
+
     pub fn backspace(&mut self) {
         if self.cursor == 0 {
             return;
@@ -163,6 +170,17 @@ mod tests {
         b.backspace();
         assert_eq!(b.text, "abc");
         assert_eq!(b.cursor, 0);
+    }
+
+    #[test]
+    fn insert_str_advances_cursor() {
+        let mut b = InputBuffer {
+            text: "ac".into(),
+            cursor: 1,
+        };
+        b.insert_str("XYZ");
+        assert_eq!(b.text, "aXYZc");
+        assert_eq!(b.cursor, 4);
     }
 
     #[test]

@@ -14,11 +14,13 @@ pub mod messages;
 pub mod sessions;
 pub mod skills;
 pub mod vector;
+pub mod world;
 
 pub use db::{now_millis, Db};
 pub use error::Error;
 pub use messages::MessageRow;
 pub use sessions::{Session, UsageDelta};
+pub use world::WorldState;
 
 #[cfg(test)]
 mod tests {
@@ -212,6 +214,43 @@ mod tests {
         assert_eq!(allowlist::list_all(&db).await.unwrap().len(), 1);
         allowlist::remove(&db, "shell").await.unwrap();
         assert!(!allowlist::contains(&db, "shell").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn world_state_round_trips_and_replaces() {
+        let db = db().await;
+
+        // Absent row → empty default, no markdown.
+        let w = world::load(&db).await.unwrap();
+        assert!(w.is_empty());
+        assert_eq!(w.render_markdown(), "");
+
+        let state = world::WorldState {
+            projects: vec![world::Project {
+                name: "ravn".into(),
+                status: "active".into(),
+                notes: String::new(),
+            }],
+            watch_targets: vec![world::WatchTarget {
+                label: "ci".into(),
+                query: "pr #4".into(),
+                last_checked: None,
+            }],
+            ..Default::default()
+        };
+        world::save(&db, &state).await.unwrap();
+
+        let loaded = world::load(&db).await.unwrap();
+        assert_eq!(loaded.projects.len(), 1);
+        assert_eq!(loaded.projects[0].name, "ravn");
+        assert_eq!(loaded.watch_targets.len(), 1);
+        let md = loaded.render_markdown();
+        assert!(md.contains("ravn"));
+        assert!(md.contains("Watch targets"));
+
+        // Saving again replaces the single row rather than appending.
+        world::save(&db, &world::WorldState::default()).await.unwrap();
+        assert!(world::load(&db).await.unwrap().is_empty());
     }
 
     #[tokio::test]

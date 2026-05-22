@@ -241,7 +241,7 @@ async fn register_defaults_registers_all() {
     let mut reg = ToolRegistry::new();
     let dir = TempDir::new().unwrap();
     register_defaults(&mut reg, dir.path().to_path_buf(), no_embedder());
-    assert_eq!(reg.len(), 9);
+    assert_eq!(reg.len(), 10);
 
     let names: std::collections::HashSet<_> = reg.names().collect();
     for expected in [
@@ -251,6 +251,7 @@ async fn register_defaults_registers_all() {
         "web_fetch",
         "session_search",
         "memory_save",
+        "world_write",
         "datetime",
         "skill_list",
         "skill_view",
@@ -274,6 +275,7 @@ async fn permissions_match_phase1_spec() {
     assert_eq!(perm("skill_view"), Permission::Read);
     assert_eq!(perm("file_write"), Permission::Write);
     assert_eq!(perm("memory_save"), Permission::Write);
+    assert_eq!(perm("world_write"), Permission::Write);
     assert_eq!(perm("shell"), Permission::Exec);
 }
 
@@ -296,6 +298,7 @@ async fn read_only_subset_drops_write_exec_and_excluded_names() {
     assert!(!names.contains("file_write"));
     assert!(!names.contains("shell"));
     assert!(!names.contains("memory_save"));
+    assert!(!names.contains("world_write"));
 }
 
 #[tokio::test]
@@ -305,7 +308,7 @@ async fn as_schemas_produces_jsonschema_per_tool() {
     register_defaults(&mut reg, dir.path().to_path_buf(), no_embedder());
 
     let schemas = reg.as_schemas();
-    assert_eq!(schemas.len(), 9);
+    assert_eq!(schemas.len(), 10);
     for s in &schemas {
         assert!(!s.name.is_empty());
         assert!(!s.description.is_empty());

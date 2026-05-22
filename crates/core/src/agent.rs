@@ -191,6 +191,16 @@ impl Agent {
             if let Some(u) = &ctx.semantic.user {
                 pb = pb.user_md(u);
             }
+            // Durable world state (Phase 4.11): loaded each step so the
+            // agent's own writes via `world_write` are reflected on the next
+            // iteration. Bytes are identical between steps without a write,
+            // so the cached system prefix stays warm.
+            let world = ravn_persistence::world::load(&self.db)
+                .await
+                .unwrap_or_default();
+            if !world.is_empty() {
+                pb = pb.world_md(world.render_markdown());
+            }
             pb = pb
                 .history(history.clone())
                 .tools(self.tools.as_schemas())
