@@ -90,6 +90,40 @@ Permission rules:
   `a` allows always (persisted across sessions, see [User guide](/ravn/user-guide/approvals/)).
 - Per-tool entries beat per-server entries; missing entries default to `write`.
 
+## ravn as an MCP server (`~/.ravn/mcp-server.toml`)
+
+The flip side of consuming MCP servers: ravn can *be* one. The `agent-mcp`
+binary exposes ravn's **read-only** tools over stdio, so other MCP clients
+(Claude Desktop, `npx @modelcontextprotocol/inspector`, other agents) can
+search your past sessions and browse your skills.
+
+```bash
+cargo build --release -p ravn-mcp-server   # → target/release/agent-mcp
+```
+
+Which tools are exposed is controlled by `~/.ravn/mcp-server.toml`; a missing
+file uses a safe default set. **Only `Read` tools can be exposed** — Write/Exec
+(`file_write`, `shell`, `memory_save`, `world_write`) are dropped with a
+warning, so an external client can never make ravn write or run anything.
+
+```toml
+# default when the file is absent:
+expose = ["session_search", "skill_list", "skill_view", "datetime"]
+```
+
+Wire it into Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "ravn": { "command": "/absolute/path/to/target/release/agent-mcp" }
+  }
+}
+```
+
+It reads the same `state.db` as the TUI (so session-search returns your real
+history) and logs to **stderr** — stdout carries the JSON-RPC stream.
+
 ## Heartbeats (`~/.ravn/heartbeats.toml`)
 
 Heartbeats are cron-scheduled jobs that fire **unattended** agent runs — no one

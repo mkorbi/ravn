@@ -333,8 +333,8 @@ Phase 1 ist abgenommen wenn:
 **Abhängigkeit**: Phase 4 abgeschlossen.
 
 ### Tasks
-- [ ] **5.1** `bin/agent-mcp`: `rmcp`-Server-Mode mit stdio+HTTP-Transport.
-- [ ] **5.2** Selektive Tool-Exposure (config-driven, default deny).
+- [x] **5.1** `bin/agent-mcp`: `rmcp`-Server-Mode mit stdio+HTTP-Transport. → `crates/mcp-server` (`agent-mcp` bin), **stdio** fertig; HTTP-Transport verschoben (mit 5.3 Auth).
+- [x] **5.2** Selektive Tool-Exposure (config-driven, default deny). → `~/.ravn/mcp-server.toml` `expose=[…]`; nur `Read`-Tools (Write/Exec gefiltert).
 - [ ] **5.3** Auth für MCP-Server (Bearer-Token, IP-Allowlist).
 - [ ] **5.4** A2A-Endpoint: Agent Card (JSON), `/tasks`/`/messages`/`/artifacts` via JSON-RPC 2.0 über HTTPS.
 - [ ] **5.5** A2A-Authentication (OAuth2/OIDC).
