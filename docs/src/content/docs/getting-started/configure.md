@@ -124,6 +124,64 @@ Wire it into Claude Desktop (`claude_desktop_config.json`):
 It reads the same `state.db` as the TUI (so session-search returns your real
 history) and logs to **stderr** — stdout carries the JSON-RPC stream.
 
+## A2A — Agent-to-Agent (`~/.ravn/a2a.toml`)
+
+Beyond exposing *tools* over MCP, ravn can expose its whole **agent** over the
+[Agent2Agent](https://a2a-protocol.org/) protocol — and call other A2A agents.
+
+### Serving (ravn as an A2A agent)
+
+```bash
+cargo build --release -p ravn-a2a          # → target/release/a2a-serve
+ANTHROPIC_API_KEY=… ./target/release/a2a-serve
+```
+
+`a2a-serve` publishes an Agent Card at `/.well-known/agent-card.json` and a
+JSON-RPC endpoint (`message/send`, `message/stream` over SSE, `tasks/get`,
+`tasks/cancel`). An incoming `message/send` runs ravn's agent and returns the
+reply as a task artifact — so the server needs an LLM key.
+
+External callers are untrusted, so an incoming task is **read-only by default**
+(Read tools only; no Write/Exec). Widen it per deployment with `allow_tools`:
+
+```toml
+[server]
+bind = "127.0.0.1:8723"
+public_url = "https://ravn.example.com/"
+name = "ravn"
+# allow_tools = ["some_write_tool"]   # default: read-only
+```
+
+### Auth (optional)
+
+Add an `[auth]` block to require an OAuth2/OIDC bearer JWT — validated against
+the IdP's JWKS (issuer, audience, expiry, scopes). The Agent Card stays public
+so clients can discover the requirement; without `[auth]` the server is
+unauthenticated (dev only). Terminate **HTTPS** at a reverse proxy in front of
+`a2a-serve`.
+
+```toml
+[auth]
+issuer = "https://idp.example.com/"
+jwks_url = "https://idp.example.com/.well-known/jwks.json"
+audience = "ravn-a2a"
+required_scopes = ["a2a.invoke"]
+```
+
+### Calling other agents
+
+List peers and use the `call_agent` tool (Write-permission — gated by the
+approval modal) to delegate to them:
+
+```toml
+[[peer]]
+name = "researcher"
+card_url = "https://researcher.example.com/.well-known/agent-card.json"
+# oauth = { token_url = "…/token", client_id = "ravn", client_secret = "…", scopes = ["a2a.invoke"] }
+```
+
+Then in the TUI: *"use call_agent to ask researcher to summarize X."*
+
 ## Heartbeats (`~/.ravn/heartbeats.toml`)
 
 Heartbeats are cron-scheduled jobs that fire **unattended** agent runs — no one
