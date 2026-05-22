@@ -1,0 +1,21 @@
+[package]
+name = "ravn-voice"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+tokio.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+reqwest.workspace = true
+
+# Mic capture + local Whisper STT. whisper-rs builds whisper.cpp via cmake;
+# `tracing_backend` routes whisper/GGML logs into tracing (→ ravn.log) instead
+# of stderr so they don't corrupt the TUI.
+cpal.workspace = true
+whisper-rs = { workspace = true, features = ["tracing_backend"] }
+parking_lot = "0.12"

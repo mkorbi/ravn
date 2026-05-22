@@ -10,6 +10,7 @@ mod ui;
 
 use std::io::{self, Stdout};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -25,6 +26,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use ravn_core::{Agent, AgentConfig, RunContext};
 use ravn_embeddings::Embedder;
+use ravn_heartbeat::{HeartbeatReport, HeartbeatStatus, Scheduler};
 use ravn_llm::anthropic::AnthropicProvider;
 use ravn_llm::openai::OpenAiProvider;
 use ravn_llm::LlmProvider;
@@ -78,7 +80,9 @@ async fn main() -> anyhow::Result<()> {
     // Shared text-embedder for the agent's message persistence + the
     // session_search tool's hybrid mode. Lazy-loads Qwen3 on first use
     // (no startup cost if the user never triggers a search).
-    let embedder = Arc::new(Embedder::default_gemma());
+    // `_quiet`: the download progress bar must NOT print to the terminal —
+    // it would corrupt the ratatui alternate screen. Progress goes to ravn.log.
+    let embedder = Arc::new(Embedder::default_gemma_quiet());
 
     // Sync skills from ~/.ravn/skills/ into the DB mirror at startup
     // (Phase 2.4/2.5). Embeddings happen fire-and-forget — the
@@ -120,10 +124,58 @@ async fn main() -> anyhow::Result<()> {
 
     let tools = Arc::new(registry);
 
+    // Heartbeat scheduler (Phase 4.10): fires unattended agent runs from
+    // ~/.ravn/heartbeats.toml. Each report flows back as an AppEvent::Notice.
+    let interactive_active = Arc::new(AtomicBool::new(false));
+    let (hb_report_tx, mut hb_report_rx) = mpsc::channel::<HeartbeatReport>(32);
+    let scheduler = match Scheduler::new(
+        provider.clone(),
+        tools.clone(),
+        embedder.clone(),
+        db.clone(),
+        model.clone(),
+        data_dir.clone(),
+        hb_report_tx,
+        interactive_active.clone(),
+    )
+    .await
+    {
+        Ok(s) => {
+            let s = Arc::new(s);
+            if let Err(e) = s.start().await {
+                tracing::warn!(error = %e, "heartbeat scheduler start failed");
+            }
+            Some(s)
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "heartbeat scheduler init failed; continuing without it");
+            None
+        }
+    };
+    {
+        let tx = event_tx.clone();
+        tokio::spawn(async move {
+            while let Some(rep) = hb_report_rx.recv().await {
+                let _ = tx
+                    .send(AppEvent::Notice {
+                        text: format_heartbeat(rep),
+                    })
+                    .await;
+            }
+        });
+    }
+
     let agent = Arc::new(
         Agent::new(provider, tools, approver, db.clone()).with_embedder(embedder),
     );
     let agent_config = AgentConfig::new(model.clone());
+
+    // Voice input (Phase 4.7): both handles are cheap — no mic opened and no
+    // model loaded until the user runs `/voice`.
+    let voice = Some(Arc::new(app::VoiceHandle {
+        recorder: ravn_voice::Recorder::new(),
+        transcriber: ravn_voice::Transcriber::new(data_dir.clone()),
+    }));
 
     let app = App::new(
         db.clone(),
@@ -131,14 +183,35 @@ async fn main() -> anyhow::Result<()> {
         model,
         DEFAULT_SYSTEM_PROMPT.to_string(),
         semantic,
+        interactive_active.clone(),
+        event_tx.clone(),
+        scheduler.clone(),
+        voice,
     );
 
     let mut terminal = init_terminal()?;
     let result = run(&mut terminal, app, agent, agent_config, event_tx, event_rx).await;
     restore_terminal(&mut terminal)?;
 
+    if let Some(s) = &scheduler {
+        s.shutdown().await;
+    }
     sessions::close(&db, &session_id).await.ok();
     result
+}
+
+/// Render a heartbeat report as a one-line scrollback notice.
+fn format_heartbeat(rep: HeartbeatReport) -> String {
+    let body = rep.message.trim();
+    let mut preview: String = body.chars().take(280).collect();
+    if body.chars().count() > 280 {
+        preview.push('…');
+    }
+    match rep.status {
+        HeartbeatStatus::Done => format!("♥ heartbeat[{}]: {preview}", rep.job),
+        HeartbeatStatus::Skipped => format!("♥ heartbeat[{}] skipped: {preview}", rep.job),
+        HeartbeatStatus::Error => format!("♥ heartbeat[{}] error: {preview}", rep.job),
+    }
 }
 
 fn init_tracing() {
@@ -338,6 +411,7 @@ fn handle_key(
             if let Some(user_msg) = app.push_user_input() {
                 app.last_error = None;
                 app.streaming_active = true;
+                app.interactive_active.store(true, Ordering::Relaxed);
                 let cancel = CancellationToken::new();
                 app.cancel = Some(cancel.clone());
                 let ctx = RunContext {
