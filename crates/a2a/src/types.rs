@@ -279,9 +279,54 @@ pub struct TaskIdParams {
     pub id: String,
 }
 
+// ---------------------------------------------------------------------------
+// Streaming events (message/stream — sent as JSON-RPC `result` over SSE)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskStatusUpdateEvent {
+    pub task_id: String,
+    pub context_id: String,
+    /// Always "status-update".
+    pub kind: String,
+    pub status: TaskStatus,
+    /// True on the terminal event (completed/failed/canceled).
+    #[serde(rename = "final")]
+    pub final_: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskArtifactUpdateEvent {
+    pub task_id: String,
+    pub context_id: String,
+    /// Always "artifact-update".
+    pub kind: String,
+    pub artifact: Artifact,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub append: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_chunk: Option<bool>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn status_update_renames_final() {
+        let ev = TaskStatusUpdateEvent {
+            task_id: "t".into(),
+            context_id: "c".into(),
+            kind: "status-update".into(),
+            status: TaskStatus::new(TaskState::Completed),
+            final_: true,
+        };
+        let v = serde_json::to_value(&ev).unwrap();
+        assert_eq!(v["final"], true);
+        assert_eq!(v["taskId"], "t");
+    }
 
     #[test]
     fn part_uses_kind_discriminator() {

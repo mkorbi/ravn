@@ -12,6 +12,7 @@ name = "ravn"
 path = "src/main.rs"
 
 [dependencies]
+ravn-a2a.workspace = true
 ravn-core.workspace = true
 ravn-embeddings.workspace = true
 ravn-heartbeat.workspace = true

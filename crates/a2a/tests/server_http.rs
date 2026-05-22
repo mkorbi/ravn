@@ -50,7 +50,7 @@ impl LlmProvider for MockProvider {
 async fn test_state() -> AppState {
     let db = Db::open_in_memory().await.unwrap();
     let config = Arc::new(A2aConfig::default());
-    let card = Arc::new(build_card(&config.server));
+    let card = Arc::new(build_card(&config));
     AppState {
         provider: Arc::new(MockProvider),
         tools: Arc::new(ToolRegistry::new()),
@@ -61,6 +61,7 @@ async fn test_state() -> AppState {
         config,
         tasks: Arc::new(TaskStore::new()),
         card,
+        auth: None,
     }
 }
 

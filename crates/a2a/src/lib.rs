@@ -6,7 +6,13 @@
 //!   client + `call_agent` tool are added stage by stage.
 
 pub mod agent_runner;
+pub mod auth;
+pub mod call_agent_tool;
+pub mod client;
 pub mod config;
 pub mod server;
 pub mod task_store;
 pub mod types;
+
+pub use call_agent_tool::CallAgentTool;
+pub use client::A2aClient;

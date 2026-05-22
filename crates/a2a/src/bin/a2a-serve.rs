@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Context;
+use ravn_a2a::auth::JwtValidator;
 use ravn_a2a::config::A2aConfig;
 use ravn_a2a::server::{build_card, router, AppState};
 use ravn_a2a::task_store::TaskStore;
@@ -38,9 +39,24 @@ async fn main() -> anyhow::Result<()> {
     native::register_defaults(&mut registry, data_dir.clone(), Some(embedder.clone()));
     let tools = Arc::new(registry);
 
-    let config = Arc::new(A2aConfig::load(&data_dir.join("a2a.toml")).await?);
-    let card = Arc::new(build_card(&config.server));
-    let tasks = Arc::new(TaskStore::new());
+    let config = A2aConfig::load(&data_dir.join("a2a.toml")).await?;
+    let card = Arc::new(build_card(&config));
+
+    // Build the JWT validator up front when auth is configured (fetches JWKS).
+    let auth = match &config.auth {
+        Some(a) => {
+            tracing::info!(issuer = %a.issuer, "A2A auth enabled (OIDC/JWT)");
+            Some(Arc::new(
+                JwtValidator::new(a.clone())
+                    .await
+                    .context("init JWT validator (JWKS)")?,
+            ))
+        }
+        None => {
+            tracing::warn!("A2A auth DISABLED (no [auth] config) — dev only");
+            None
+        }
+    };
 
     let bind = config.server.bind.clone();
     if config.server.allow_tools.is_empty() {
@@ -49,6 +65,7 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!(allow_tools = ?config.server.allow_tools, "incoming tasks may use these Write/Exec tools");
     }
 
+    let tasks = Arc::new(TaskStore::new());
     let state = AppState {
         provider,
         tools,
@@ -56,9 +73,10 @@ async fn main() -> anyhow::Result<()> {
         db,
         model,
         data_dir,
-        config,
+        config: Arc::new(config),
         tasks,
         card,
+        auth,
     };
 
     let listener = tokio::net::TcpListener::bind(&bind)
