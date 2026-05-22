@@ -20,3 +20,7 @@ Cargo.lock.bak
 *.db-wal
 /data/
 /.fastembed_cache/
+
+# Eval run output
+/report.json
+/eval-report-*.json

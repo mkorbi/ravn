@@ -11,6 +11,11 @@ pub enum LoopEvent {
     StepStart {
         step: usize,
     },
+    /// Router picked a [`crate::ReasoningMode`] for this step.
+    ModeChange {
+        step: usize,
+        mode: crate::reasoning::Mode,
+    },
     TextDelta(String),
     /// Extended Thinking delta — caller may surface or drop.
     ThinkingDelta(String),

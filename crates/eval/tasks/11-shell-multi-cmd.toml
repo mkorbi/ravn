@@ -1,0 +1,6 @@
+title = "Shell — list two paths"
+input = "List the contents of /tmp and report how many entries are there. Use the shell tool with `ls -1 /tmp | wc -l`."
+rubric = "Response contains a single number for the entry count. The agent must have called the shell tool."
+tags = ["exec", "shell"]
+max_steps = 3
+max_cost_usd = 0.10

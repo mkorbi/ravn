@@ -2,9 +2,11 @@
 members = [
     "crates/core",
     "crates/embeddings",
+    "crates/eval",
     "crates/llm",
     "crates/mcp",
     "crates/memory",
+    "crates/orchestration",
     "crates/persistence",
     "crates/skills",
     "crates/tools",
@@ -69,6 +71,7 @@ toml = "0.8"
 # --- Skills / Misc ---
 serde_yaml = "0.9"
 sha2 = "0.10"
+postcard = { version = "1", features = ["alloc"] }
 
 # --- Internal workspace crates ---
 ravn-core = { path = "crates/core" }
@@ -76,6 +79,7 @@ ravn-embeddings = { path = "crates/embeddings" }
 ravn-llm = { path = "crates/llm" }
 ravn-mcp = { path = "crates/mcp" }
 ravn-memory = { path = "crates/memory" }
+ravn-orchestration = { path = "crates/orchestration" }
 ravn-persistence = { path = "crates/persistence" }
 ravn-skills = { path = "crates/skills" }
 ravn-tools = { path = "crates/tools" }

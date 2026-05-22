@@ -1,0 +1,6 @@
+title = "Fetch a URL and summarize"
+input = "Use web_fetch to load https://example.com — what is the page about? One sentence."
+rubric = "Response mentions 'Example Domain' or similar, indicating the agent actually fetched example.com. One- or two-sentence answer. No invented details beyond what example.com contains."
+tags = ["read", "tools", "web"]
+max_steps = 3
+max_cost_usd = 0.10

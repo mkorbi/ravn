@@ -26,6 +26,8 @@ use tokio_util::sync::CancellationToken;
 use crate::budget::{Budget, BudgetTracker, BudgetUsage};
 use crate::error::AgentError;
 use crate::event::{EventSink, LoopEvent};
+use crate::reasoning::Mode;
+use crate::router::{HeuristicRouter, Router, RouterInput};
 
 #[derive(Clone)]
 pub struct AgentConfig {
@@ -33,6 +35,14 @@ pub struct AgentConfig {
     pub system_prompt: String,
     pub max_tokens: u32,
     pub budget: Budget,
+    /// Initial reasoning mode. **Note:** since Phase 3.1, the per-step
+    /// [`crate::router::Router`] picks the mode on every iteration —
+    /// this field is kept for backward compatibility with callers that
+    /// haven't migrated to `Agent::with_router`. Use a [`FixedRouter`]
+    /// to lock the loop to a specific mode.
+    ///
+    /// [`FixedRouter`]: crate::router::FixedRouter
+    pub mode: Mode,
 }
 
 impl AgentConfig {
@@ -42,7 +52,13 @@ impl AgentConfig {
             system_prompt: "You are ravn, a concise and helpful assistant.".into(),
             max_tokens: 4096,
             budget: Budget::default(),
+            mode: Mode::default(),
         }
+    }
+
+    pub fn with_mode(mut self, mode: Mode) -> Self {
+        self.mode = mode;
+        self
     }
 }
 
@@ -54,6 +70,8 @@ pub struct Agent {
     /// Optional — if `Some`, every persisted message is also embedded and
     /// indexed in `messages_vec` (fire-and-forget). Tests pass `None`.
     embedder: Option<Arc<Embedder>>,
+    /// Pre-step Mode classifier. Defaults to [`HeuristicRouter`] (D15).
+    router: Arc<dyn Router>,
 }
 
 impl Agent {
@@ -69,11 +87,17 @@ impl Agent {
             approver,
             db,
             embedder: None,
+            router: Arc::new(HeuristicRouter::default()),
         }
     }
 
     pub fn with_embedder(mut self, embedder: Arc<Embedder>) -> Self {
         self.embedder = Some(embedder);
+        self
+    }
+
+    pub fn with_router(mut self, router: Arc<dyn Router>) -> Self {
+        self.router = router;
         self
     }
 }
@@ -106,6 +130,11 @@ impl Agent {
         let mut budget = BudgetTracker::new(config.budget);
         let mut history = ctx.history;
         let mut next_input = ctx.user_turn;
+        // Per-step router signals.
+        let mut last_iteration_had_tool_error = false;
+        let mut previous_mode_was_reflect = false;
+        let mut reflection_attempts: usize = 0;
+        let mut current_mode;
 
         loop {
             if let Err(reason) = budget.bump_step() {
@@ -124,6 +153,33 @@ impl Agent {
             }
             emit(&sink, LoopEvent::StepStart { step: budget.usage.steps }).await;
 
+            // Router picks the mode for this step (Phase 3.1, D15).
+            // Default-builds use HeuristicRouter; tests / advanced
+            // callers can swap via Agent::with_router.
+            current_mode = self.router.classify(RouterInput {
+                step: budget.usage.steps,
+                last_iteration_had_tool_error,
+                previous_mode_was_reflect,
+                reflection_attempts,
+            });
+            if current_mode == Mode::Reflect {
+                reflection_attempts += 1;
+                // Prepend a Self-Critique-Prefix to the next user turn
+                // (= the aggregated tool_results) so the model is
+                // primed to analyze the failure before acting again.
+                // Does NOT bust the prompt cache: the cached prefix
+                // ends before this user message.
+                next_input = prepend_reflection_prefix(next_input, reflection_attempts);
+            }
+            emit(
+                &sink,
+                LoopEvent::ModeChange {
+                    step: budget.usage.steps,
+                    mode: current_mode,
+                },
+            )
+            .await;
+
             // Build cache-stable prompt.
             let mut pb = PromptBuilder::new().system(&config.system_prompt);
             if let Some(s) = &ctx.semantic.soul {
@@ -135,7 +191,10 @@ impl Agent {
             if let Some(u) = &ctx.semantic.user {
                 pb = pb.user_md(u);
             }
-            pb = pb.history(history.clone()).tools(self.tools.as_schemas());
+            pb = pb
+                .history(history.clone())
+                .tools(self.tools.as_schemas())
+                .reasoning_effort(current_mode.reasoning_effort());
             let req = pb.build(&config.model, next_input.clone(), config.max_tokens);
 
             // Persist the next user-role turn (initial user input or
@@ -324,6 +383,14 @@ impl Agent {
                 });
             }
 
+            // Router signals for the *next* iteration:
+            // - any tool returning is_error makes the next step Reflect
+            //   (or escalates to Deep if we were already in Reflect).
+            // - track whether this iteration was Reflect so the escalation
+            //   in HeuristicRouter::classify works.
+            last_iteration_had_tool_error = next_input_has_tool_error(&tool_results);
+            previous_mode_was_reflect = current_mode == Mode::Reflect;
+
             next_input = Message {
                 role: Role::User,
                 content: tool_results,
@@ -394,6 +461,7 @@ impl Agent {
 
         let mut text = String::new();
         let mut thinking = String::new();
+        let mut thinking_signature: Option<String> = None;
         let mut current_tool: Option<ToolBuf> = None;
         let mut completed_tools: Vec<ContentBlock> = Vec::new();
         // Defense-in-depth dedup: adapters should not emit two
@@ -420,6 +488,14 @@ impl Agent {
                         StreamChunk::ThinkingDelta(t) => {
                             thinking.push_str(&t);
                             emit(&sink, LoopEvent::ThinkingDelta(t)).await;
+                        }
+                        StreamChunk::ThinkingSignature(sig) => {
+                            // Anthropic requires this back on the next turn
+                            // or the API returns 400. Last writer wins —
+                            // Anthropic only emits one block per turn in
+                            // practice; OpenAI's Text reasoning is
+                            // signature-less so this stays None there.
+                            thinking_signature = sig;
                         }
                         StreamChunk::ToolUseStart { id, name } => {
                             if let Some(prev) = current_tool.take() {
@@ -477,7 +553,7 @@ impl Agent {
         if !thinking.is_empty() {
             blocks.push(ContentBlock::Thinking {
                 thinking,
-                signature: None,
+                signature: thinking_signature,
             });
         }
         if !text.is_empty() {
@@ -505,6 +581,33 @@ fn finalize_tool(t: ToolBuf) -> ContentBlock {
         id: t.id,
         name: t.name,
         input,
+    }
+}
+
+/// `true` if any tool-result block in the slice signaled an error.
+/// Used by the router to switch to [`Mode::Reflect`] on the next step.
+fn next_input_has_tool_error(blocks: &[ContentBlock]) -> bool {
+    blocks
+        .iter()
+        .any(|b| matches!(b, ContentBlock::ToolResult { is_error: true, .. }))
+}
+
+/// Prepend a Self-Critique-Prefix to a user-role message containing
+/// tool results. The prefix tells the model: a previous call errored,
+/// reflect on why, propose a different approach. Used in
+/// [`Mode::Reflect`] (Phase 3.5).
+fn prepend_reflection_prefix(msg: Message, attempt: usize) -> Message {
+    let prefix = format!(
+        "[reflection attempt {attempt}] The previous tool call returned an error. \
+         Before retrying, analyze briefly what went wrong, then propose a different \
+         approach — do not repeat the exact same call. If you cannot recover, say so."
+    );
+    let mut content = Vec::with_capacity(msg.content.len() + 1);
+    content.push(ContentBlock::Text { text: prefix });
+    content.extend(msg.content);
+    Message {
+        role: msg.role,
+        content,
     }
 }
 

@@ -1,0 +1,6 @@
+title = "Datetime question — should use the datetime tool"
+input = "What's today's date? Use the datetime tool to be accurate."
+rubric = "The response includes the current year (a four-digit number 2024-2027). The agent must have called the `datetime` tool — passes only if the answer is grounded in tool output, not the model's training cutoff."
+tags = ["read", "tools", "datetime"]
+max_steps = 3
+max_cost_usd = 0.05

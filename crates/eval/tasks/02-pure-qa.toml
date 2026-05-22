@@ -1,0 +1,9 @@
+title = "Pure Q&A — no tools needed"
+input = "Explain Rust's borrow checker in two sentences."
+rubric = "Mentions both 'ownership' (or 'owner') and either 'lifetime' or 'reference'/'borrowing'. Two sentences (or two-sentence-style). No code blocks required."
+tags = ["text", "no-tools"]
+max_steps = 2
+max_cost_usd = 0.05
+
+[tools]
+kind = "none"

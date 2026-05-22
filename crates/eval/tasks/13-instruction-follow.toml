@@ -1,0 +1,9 @@
+title = "Strict instruction following"
+input = "Respond with exactly: 'PONG' — nothing else, no formatting, no quotes."
+rubric = "Response is exactly 'PONG' (case-insensitive ok). No surrounding quotes, no markdown, no extra punctuation, no explanation."
+tags = ["text", "no-tools", "format"]
+max_steps = 1
+max_cost_usd = 0.02
+
+[tools]
+kind = "none"

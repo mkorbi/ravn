@@ -1,0 +1,6 @@
+title = "Discover available skills"
+input = "What skills do you have? Use skill_list to find out."
+rubric = "Response mentions that no skills are configured OR lists one or more skills by name (e.g. git-workflow, web-research, note-taking). If skills are absent in the eval environment, an answer like 'no skills registered' is a pass."
+tags = ["skills", "progressive-disclosure"]
+max_steps = 3
+max_cost_usd = 0.05

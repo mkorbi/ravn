@@ -1,0 +1,6 @@
+title = "Run a simple shell command"
+input = "Use the shell tool to run `echo hello eval` and report what stdout said."
+rubric = "Response contains the literal text 'hello eval'. The agent must have called the shell tool."
+tags = ["exec", "tools", "shell"]
+max_steps = 3
+max_cost_usd = 0.10
