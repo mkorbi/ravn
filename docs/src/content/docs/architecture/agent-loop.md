@@ -176,6 +176,8 @@ without, then with, the candidate, and gate the move:
 
 ```bash
 cargo run -p ravn-eval --bin verify-candidate -- \
-  --name auto-web-fetch-then-file-write --baseline 0.62 --candidate 0.71
-# atomically moves the candidate into ~/.ravn/skills only on a pass-rate gain
+  --name auto-web-fetch-then-file-write --baseline 0.62 --candidate 0.71 --git
+# promotes into ~/.ravn/skills only on a pass-rate gain; --git records it as
+# one commit in the versioned skills repo (Phase 6.5) so a regression rolls
+# back atomically: git -C ~/.ravn/skills reset --hard HEAD~1
 ```

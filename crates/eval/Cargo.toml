@@ -26,6 +26,11 @@ path = "src/bin/curator.rs"
 name = "verify-candidate"
 path = "src/bin/verify-candidate.rs"
 
+[[bin]]
+# Phase 6.9: constitutional self-audit of recent sessions → memory.md.
+name = "auditor"
+path = "src/bin/auditor.rs"
+
 [dependencies]
 ravn-core.workspace = true
 ravn-llm.workspace = true

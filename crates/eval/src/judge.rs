@@ -60,7 +60,7 @@ impl Judge {
     }
 }
 
-async fn collect_text(
+pub(crate) async fn collect_text(
     provider: &Arc<dyn LlmProvider>,
     req: CompletionRequest,
 ) -> Result<String, Error> {
@@ -79,7 +79,7 @@ async fn collect_text(
     Ok(out)
 }
 
-fn strip_code_fences(s: &str) -> &str {
+pub(crate) fn strip_code_fences(s: &str) -> &str {
     let trimmed = s.trim();
     if let Some(rest) = trimmed.strip_prefix("```json") {
         return rest.strip_suffix("```").unwrap_or(rest).trim();

@@ -14,6 +14,7 @@
 use std::path::PathBuf;
 
 use ravn_eval::synthesis::{verify_with_rates, Decision};
+use ravn_eval::SkillRepo;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -23,6 +24,7 @@ async fn main() -> anyhow::Result<()> {
     let mut min_improvement = 0.0_f64;
     let mut candidates_dir: Option<PathBuf> = None;
     let mut skills_dir: Option<PathBuf> = None;
+    let mut git = false;
 
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -33,6 +35,7 @@ async fn main() -> anyhow::Result<()> {
             "--min-improvement" => min_improvement = parse_next(&mut args, "--min-improvement")?,
             "--candidates-dir" => candidates_dir = args.next().map(PathBuf::from),
             "--skills-dir" => skills_dir = args.next().map(PathBuf::from),
+            "--git" => git = true,
             "-h" | "--help" => {
                 print_help();
                 return Ok(());
@@ -53,16 +56,27 @@ async fn main() -> anyhow::Result<()> {
         None => data_dir()?.join("skills"),
     };
 
-    let report =
-        verify_with_rates(&name, baseline, candidate, &candidates_dir, &skills_dir, min_improvement)
-            .await?;
+    let repo = git.then(|| SkillRepo::open(&skills_dir));
+    let report = verify_with_rates(
+        &name,
+        baseline,
+        candidate,
+        &candidates_dir,
+        &skills_dir,
+        min_improvement,
+        repo.as_ref(),
+    )
+    .await?;
 
     println!("{}", report.reason);
     match report.decision {
-        Decision::Promote => println!(
-            "promoted `{name}` → {}",
-            skills_dir.join(&name).display()
-        ),
+        Decision::Promote => {
+            println!("promoted `{name}` → {}", skills_dir.join(&name).display());
+            if let Some(rev) = &report.commit {
+                let short = &rev[..rev.len().min(8)];
+                println!("committed as {short}; roll back with: git -C {} reset --hard HEAD~1", skills_dir.display());
+            }
+        }
         Decision::Reject => println!("left `{name}` in {}", candidates_dir.join(&name).display()),
     }
     Ok(())
@@ -91,9 +105,10 @@ fn print_help() {
     eprintln!(
         "verify-candidate — promote a curator candidate on pass-rate (Phase 6.4)\n\n\
          USAGE:\n  verify-candidate --name <name> --baseline <rate> --candidate <rate> \\\n\
-         \x20                  [--min-improvement R] [--candidates-dir D] [--skills-dir D]\n\n\
+         \x20                  [--min-improvement R] [--candidates-dir D] [--skills-dir D] [--git]\n\n\
          Measure <rate>s by running the eval set without, then with, the candidate\n\
          skill synced. Promotes only if candidate >= baseline + min-improvement.\n\
-         Defaults: dirs under ~/.ravn; --min-improvement 0.0 (must not regress)."
+         --git commits the promotion to the versioned skills repo (Phase 6.5) so it\n\
+         can be rolled back. Defaults: dirs under ~/.ravn; --min-improvement 0.0."
     );
 }

@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 
+use crate::skillrepo::{promote_committed, SkillRepo};
 use crate::Error;
 
 /// Negligible-difference epsilon for pass-rate comparison.
@@ -33,6 +34,9 @@ pub struct VerificationReport {
     pub min_improvement: f64,
     pub decision: Decision,
     pub reason: String,
+    /// The git revision of the promotion when committed to a [`SkillRepo`]
+    /// (Phase 6.5); `None` for a plain move or a rejected candidate.
+    pub commit: Option<String>,
 }
 
 /// Promote iff the candidate pass-rate is at least `baseline + min_improvement`.
@@ -127,11 +131,14 @@ pub async fn verify_and_promote<M: PassRateMeasurer>(
         min_improvement,
         decision,
         reason: reason(baseline, candidate, min_improvement, decision),
+        commit: None,
     })
 }
 
 /// Build a [`VerificationReport`] from pass-rates measured out-of-band, and
-/// promote on `Promote`. Used by the `verify-candidate` bin.
+/// promote on `Promote`. When `repo` is `Some`, the promotion is committed to
+/// the git-versioned skills repo (Phase 6.5) so it can be rolled back; when
+/// `None`, it's a plain move. Used by the `verify-candidate` bin.
 pub async fn verify_with_rates(
     name: &str,
     baseline: f64,
@@ -139,11 +146,22 @@ pub async fn verify_with_rates(
     candidates_dir: &Path,
     skills_dir: &Path,
     min_improvement: f64,
+    repo: Option<&SkillRepo>,
 ) -> Result<VerificationReport, Error> {
     let candidate_dir = candidates_dir.join(name);
     let decision = decide(baseline, candidate, min_improvement);
+    let mut commit = None;
     if decision == Decision::Promote {
-        promote(&candidate_dir, skills_dir).await?;
+        match repo {
+            Some(r) => {
+                let pc =
+                    promote_committed(r, &candidate_dir, &format!("promote skill: {name}")).await?;
+                commit = Some(pc.rev);
+            }
+            None => {
+                promote(&candidate_dir, skills_dir).await?;
+            }
+        }
     }
     Ok(VerificationReport {
         name: name.to_string(),
@@ -152,6 +170,7 @@ pub async fn verify_with_rates(
         min_improvement,
         decision,
         reason: reason(baseline, candidate, min_improvement, decision),
+        commit,
     })
 }
 

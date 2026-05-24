@@ -237,6 +237,17 @@ happens.
 The `memory_save` tool (write-permission) writes into these files
 under a `## <section>` heading, defaulting to today's date.
 
+### Self-audit (`~/.ravn/constitution.md`)
+
+Write rules ravn should hold itself to (privacy, tone, safety). The
+`auditor` job reviews recent sessions against them with an LLM and appends
+concrete findings to `memory.md`, so reviews carry forward (Phase 6.9):
+
+```bash
+cargo run -p ravn-eval --bin auditor -- --limit 100   # needs an LLM key
+# --dry-run prints findings without writing; schedule it via a heartbeat
+```
+
 ## World state
 
 Beyond the Markdown memory files, ravn keeps a structured **world state** in
