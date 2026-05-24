@@ -16,6 +16,11 @@ path = "src/bin/ravn-eval.rs"
 name = "trajectory-export"
 path = "src/bin/trajectory-export.rs"
 
+[[bin]]
+# Phase 6.3: mine trajectories into SKILL.md candidates.
+name = "curator"
+path = "src/bin/curator.rs"
+
 [dependencies]
 ravn-core.workspace = true
 ravn-llm.workspace = true
@@ -39,3 +44,5 @@ dirs = "5"
 
 [dev-dependencies]
 tempfile = "3"
+# Cross-validate that curator-rendered SKILL.md candidates actually parse.
+ravn-skills.workspace = true

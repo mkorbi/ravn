@@ -3731,6 +3731,7 @@ dependencies = [
  "ravn-llm",
  "ravn-memory",
  "ravn-persistence",
+ "ravn-skills",
  "ravn-tools",
  "serde",
  "serde_json",

@@ -133,6 +133,7 @@ The `events` table gets one row per ReAct boundary:
 | `kind` | Payload |
 |---|---|
 | `react.step` | `{ step, mode, thought, action[], observation[], reward? }` |
+| `react.reward` | `{ reward, detail }` (episode reward, keyed by `trace_id`) |
 | `react.tool.start` | `{ name, permission }` |
 | `react.tool.end` | `{ name, is_error, len }` |
 | `react.done` | `{ steps, cost_usd }` |
@@ -147,7 +148,10 @@ All keyed by a UUID `trace_id` for replay.
 the model's `thought`, the tool calls (`action`), and their results
 (`observation`, capped at 16 KB each). The terminal step carries the final
 answer as its thought with no action/observation. `reward` is `null` until
-a reward function scores it (Phase 6.2).
+a verifier scores the episode (Phase 6.2): `ravn_eval::reward` provides
+`TestsPass` / `GitCommitted` / `FileMatches` verifiers whose composite
+`score` is recorded as a `react.reward` event and attached to the
+trajectory's terminal step on export.
 
 Export them as JSONL (one record per line, `trace_id` merged in from the
 event column) for RL tooling:
@@ -155,4 +159,13 @@ event column) for RL tooling:
 ```bash
 cargo run -p ravn-eval --bin trajectory-export -- --out trajectories.jsonl
 # filters: --session <id> | --trace <id>;  --db <path> points elsewhere
+```
+
+The **curator** (Phase 6.3) mines these trajectories for recurring tool
+sequences and writes each as a SKILL.md *candidate* under
+`~/.ravn/skill-candidates/` — proposals to verify before promoting:
+
+```bash
+cargo run -p ravn-eval --bin curator -- --min-support 2 --min-reward 1.0
+# --dry-run to list without writing; raise --min-reward to mine only successes
 ```

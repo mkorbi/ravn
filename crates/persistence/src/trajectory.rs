@@ -11,6 +11,8 @@
 //! self-contained record `{trace_id, step, thought, action, observation,
 //! reward?}`.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::db::Db;
@@ -18,6 +20,9 @@ use crate::error::Error;
 
 /// Event `kind` for a logged ReAct step.
 pub const STEP_EVENT_KIND: &str = "react.step";
+
+/// Event `kind` for an episode reward (Phase 6.2), keyed by `trace_id`.
+pub const REWARD_EVENT_KIND: &str = "react.reward";
 
 /// One ReAct iteration: the model's reasoning, the tool calls it issued, and
 /// the results observed.
@@ -63,15 +68,38 @@ pub struct Filter {
     pub trace_id: Option<String>,
 }
 
-/// Export logged trajectory steps as JSONL (one [`TrajectoryStep`] per line,
-/// ordered by event id), with `trace_id` merged in from the event column.
-pub async fn export_jsonl(db: &Db, filter: &Filter) -> Result<String, Error> {
-    let rows: Vec<(Option<String>, Vec<u8>)> = match (&filter.session_id, &filter.trace_id) {
+/// Record an episode reward (Phase 6.2) as a `react.reward` event keyed by
+/// `trace_id`. [`export_jsonl`] surfaces it on the trajectory's terminal step.
+pub async fn record_reward(
+    db: &Db,
+    trace_id: &str,
+    session_id: Option<&str>,
+    reward: f64,
+    detail: &str,
+) -> Result<i64, Error> {
+    crate::events::append_json(
+        db,
+        Some(trace_id),
+        session_id,
+        REWARD_EVENT_KIND,
+        &serde_json::json!({ "reward": reward, "detail": detail }),
+    )
+    .await
+}
+
+/// Fetch `(trace_id, payload)` rows for one event `kind`, honoring the filter,
+/// ordered by event id.
+async fn fetch_rows(
+    db: &Db,
+    kind: &str,
+    filter: &Filter,
+) -> Result<Vec<(Option<String>, Vec<u8>)>, Error> {
+    Ok(match (&filter.session_id, &filter.trace_id) {
         (Some(sid), _) => sqlx::query_as(
             "SELECT trace_id, payload FROM events
               WHERE kind = ?1 AND session_id = ?2 ORDER BY id",
         )
-        .bind(STEP_EVENT_KIND)
+        .bind(kind)
         .bind(sid)
         .fetch_all(&db.pool)
         .await?,
@@ -79,26 +107,69 @@ pub async fn export_jsonl(db: &Db, filter: &Filter) -> Result<String, Error> {
             "SELECT trace_id, payload FROM events
               WHERE kind = ?1 AND trace_id = ?2 ORDER BY id",
         )
-        .bind(STEP_EVENT_KIND)
+        .bind(kind)
         .bind(tid)
         .fetch_all(&db.pool)
         .await?,
-        (None, None) => sqlx::query_as(
-            "SELECT trace_id, payload FROM events WHERE kind = ?1 ORDER BY id",
-        )
-        .bind(STEP_EVENT_KIND)
-        .fetch_all(&db.pool)
-        .await?,
-    };
+        (None, None) => {
+            sqlx::query_as("SELECT trace_id, payload FROM events WHERE kind = ?1 ORDER BY id")
+                .bind(kind)
+                .fetch_all(&db.pool)
+                .await?
+        }
+    })
+}
 
-    let mut out = String::new();
-    for (trace_id, payload) in rows {
+/// Load logged trajectory steps (ordered by event id), with `trace_id` merged
+/// in from the event column and any episode reward attached to each trace's
+/// terminal (last) step.
+pub async fn load(db: &Db, filter: &Filter) -> Result<Vec<TrajectoryStep>, Error> {
+    let mut steps: Vec<TrajectoryStep> = Vec::new();
+    for (trace_id, payload) in fetch_rows(db, STEP_EVENT_KIND, filter).await? {
         let mut step: TrajectoryStep = serde_json::from_slice(&payload)?;
         step.trace_id = trace_id.unwrap_or_default();
+        steps.push(step);
+    }
+
+    // Attach the latest reward per trace to that trace's last step.
+    let rewards = load_rewards(db, filter).await?;
+    if !rewards.is_empty() {
+        let mut last_idx: HashMap<String, usize> = HashMap::new();
+        for (i, s) in steps.iter().enumerate() {
+            last_idx.insert(s.trace_id.clone(), i);
+        }
+        for (trace, idx) in last_idx {
+            if let Some(r) = rewards.get(&trace) {
+                steps[idx].reward = Some(*r);
+            }
+        }
+    }
+    Ok(steps)
+}
+
+/// Export logged trajectory steps as JSONL (one [`TrajectoryStep`] per line).
+pub async fn export_jsonl(db: &Db, filter: &Filter) -> Result<String, Error> {
+    let mut out = String::new();
+    for step in load(db, filter).await? {
         out.push_str(&serde_json::to_string(&step)?);
         out.push('\n');
     }
     Ok(out)
+}
+
+/// Latest reward per `trace_id` (last write wins, since rows are id-ordered).
+async fn load_rewards(db: &Db, filter: &Filter) -> Result<HashMap<String, f64>, Error> {
+    let mut map = HashMap::new();
+    for (trace_id, payload) in fetch_rows(db, REWARD_EVENT_KIND, filter).await? {
+        let (Some(tid), Ok(v)) = (trace_id, serde_json::from_slice::<serde_json::Value>(&payload))
+        else {
+            continue;
+        };
+        if let Some(r) = v.get("reward").and_then(serde_json::Value::as_f64) {
+            map.insert(tid, r);
+        }
+    }
+    Ok(map)
 }
 
 #[cfg(test)]
@@ -156,5 +227,43 @@ mod tests {
         .await
         .unwrap();
         assert!(empty.is_empty());
+    }
+
+    #[tokio::test]
+    async fn reward_attaches_to_terminal_step() {
+        let db = Db::open_in_memory().await.unwrap();
+        crate::sessions::create(&db, "s1", "test", None).await.unwrap();
+
+        let mk = |step: usize, terminal: bool| TrajectoryStep {
+            trace_id: String::new(),
+            step,
+            mode: Some("Fast".into()),
+            thought: format!("step {step}"),
+            action: if terminal {
+                vec![]
+            } else {
+                vec![Action {
+                    tool: "add".into(),
+                    input: serde_json::json!({}),
+                }]
+            },
+            observation: vec![],
+            reward: None,
+        };
+        events::append_json(&db, Some("t1"), Some("s1"), STEP_EVENT_KIND, &mk(1, false))
+            .await
+            .unwrap();
+        events::append_json(&db, Some("t1"), Some("s1"), STEP_EVENT_KIND, &mk(2, true))
+            .await
+            .unwrap();
+        record_reward(&db, "t1", Some("s1"), 0.75, "tests_pass=1.00").await.unwrap();
+
+        let jsonl = export_jsonl(&db, &Filter::default()).await.unwrap();
+        let steps: Vec<TrajectoryStep> =
+            jsonl.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(steps.len(), 2);
+        // Reward lands on the terminal (last) step only.
+        assert_eq!(steps[0].reward, None);
+        assert_eq!(steps[1].reward, Some(0.75));
     }
 }

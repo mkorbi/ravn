@@ -8,11 +8,17 @@
 //! Not a unit-test crate — the runner needs a live `ANTHROPIC_API_KEY`
 //! and burns real tokens. Invoke via the `ravn-eval` binary.
 
+pub mod curator;
 pub mod judge;
+pub mod reward;
 pub mod runner;
 pub mod task;
 
+pub use curator::{mine, render_skill_md, CuratorConfig, SkillCandidate};
 pub use judge::{Judge, Judgement};
+pub use reward::{
+    score, score_and_record, FileMatches, GitCommitted, Match, RewardOutcome, TestsPass, Verifier,
+};
 pub use runner::{EvalReport, EvalRunner, TaskOutcome};
 pub use task::{EvalTask, ToolSet};
 
