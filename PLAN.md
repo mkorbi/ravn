@@ -355,7 +355,7 @@ Phase 1 ist abgenommen wenn:
 **Abhängigkeit**: Phase 5 abgeschlossen; ≥ 5000 reale Trajektorien.
 
 ### Tasks
-- [ ] **6.1** Trajectory-Logger Schema-Lock: `{trace_id, step, thought, action, observation, reward?}` als JSONL-Export-Pfad zusätzlich zur SQLite.
+- [x] **6.1** Trajectory-Logger Schema-Lock: `{trace_id, step, thought, action, observation, reward?}` als JSONL-Export-Pfad zusätzlich zur SQLite. → `ravn_persistence::trajectory::TrajectoryStep` (Schema gelockt); der ReAct-Loop emittiert pro Iteration ein `react.step`-Event (Tool-Schritte mit thought/action/observation, Terminal-Schritt mit final answer; Observations auf 16 KB gecappt, `reward` = None bis 6.2). `export_jsonl(db, Filter)` liest `react.step` und merged `trace_id` aus der Spalte; Bin `trajectory-export` (im `eval`-Crate) schreibt JSONL (`--session`/`--trace`/`--out`). Tests: Export-Roundtrip + Loop loggt 2 Schritte (Tool + Terminal).
 - [ ] **6.2** Reward-Funktionen für verifizierbare Skills (Tests grün, Git-Commit, File-Diff matched).
 - [ ] **6.3** `bin/curator`: nightly Job sucht häufige Action-Sequenzen, abstrahiert zu SKILL.md-Kandidaten.
 - [ ] **6.4** Skill-Synthesis-Verification: Dry-Run auf historischen Tasks, Merge nur bei Pass-Rate-Verbesserung.

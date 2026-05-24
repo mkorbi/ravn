@@ -132,10 +132,27 @@ The `events` table gets one row per ReAct boundary:
 
 | `kind` | Payload |
 |---|---|
+| `react.step` | `{ step, mode, thought, action[], observation[], reward? }` |
 | `react.tool.start` | `{ name, permission }` |
 | `react.tool.end` | `{ name, is_error, len }` |
 | `react.done` | `{ steps, cost_usd }` |
 | `llm.request` / `llm.response` | model + size |
 
-All keyed by a UUID `trace_id` for replay. Phase 6 turns these into
-RL training data.
+All keyed by a UUID `trace_id` for replay.
+
+### Trajectory schema & export (Phase 6.1)
+
+`react.step` is the locked RL trajectory record
+(`ravn_persistence::trajectory::TrajectoryStep`): one per ReAct iteration —
+the model's `thought`, the tool calls (`action`), and their results
+(`observation`, capped at 16 KB each). The terminal step carries the final
+answer as its thought with no action/observation. `reward` is `null` until
+a reward function scores it (Phase 6.2).
+
+Export them as JSONL (one record per line, `trace_id` merged in from the
+event column) for RL tooling:
+
+```bash
+cargo run -p ravn-eval --bin trajectory-export -- --out trajectories.jsonl
+# filters: --session <id> | --trace <id>;  --db <path> points elsewhere
+```

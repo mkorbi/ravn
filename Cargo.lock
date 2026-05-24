@@ -3726,6 +3726,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "dirs 5.0.1",
  "ravn-core",
  "ravn-llm",
  "ravn-memory",
