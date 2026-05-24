@@ -1,0 +1,122 @@
+# Release pipeline: generate Software Bill of Materials (SBOM) and attach it to
+# the GitHub release for a tag.
+#
+# Two SBOMs are produced for the whole Cargo workspace:
+#   * CycloneDX JSON  — Rust-native, via `cargo-cyclonedx` (per-crate BOMs are
+#     merged into one workspace BOM with the CycloneDX CLI).
+#   * SPDX JSON       — via Syft (anchore/sbom-action), reading Cargo.lock;
+#     this is the format GitHub's dependency graph understands.
+#
+# Triggered by pushing a `v*` tag (creates the release if absent), or manually
+# via workflow_dispatch against an existing tag. Binary builds / signing are
+# intentionally out of scope here (tracked as PLAN 7.1).
+name: Release
+
+on:
+  push:
+    # Tag-only — this pipeline runs solely for `v*` release tags. A docs (or any
+    # code) push to a branch never creates such a tag, so it can NEVER trigger a
+    # release here; docs changes are handled by docs.yml on branch pushes.
+    # NB: do not add a `paths-ignore` here as a guard — GitHub does not evaluate
+    # path filters for tag pushes, so it would be a no-op giving false comfort.
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to generate SBOMs for (e.g. v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write # create the release and upload SBOM assets
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  sbom:
+    name: Generate & attach SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve release tag
+        id: meta
+        shell: bash
+        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout at tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.tag }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx --locked
+
+      - name: Generate per-crate CycloneDX BOMs
+        run: cargo cyclonedx --all --format json
+
+      - name: Fetch CycloneDX CLI (for merge)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo CycloneDX/cyclonedx-cli \
+            --pattern 'cyclonedx-linux-x64' --output ./cyclonedx --clobber
+          chmod +x ./cyclonedx
+
+      - name: Merge into one workspace CycloneDX SBOM
+        shell: bash
+        run: |
+          # `cargo cyclonedx --all` writes one BOM next to each crate's
+          # Cargo.toml; collect them by content (the CycloneDX discriminator)
+          # so we don't depend on the tool's output-filename convention.
+          mapfile -t BOMS < <(grep -rl --include='*.json' \
+            --exclude-dir=target --exclude-dir=.git --exclude-dir=node_modules \
+            '"bomFormat"' .)
+          if [ "${#BOMS[@]}" -eq 0 ]; then
+            echo "::error::no CycloneDX BOMs produced by cargo-cyclonedx"
+            exit 1
+          fi
+          echo "merging ${#BOMS[@]} per-crate BOMs:"
+          printf '  %s\n' "${BOMS[@]}"
+          ./cyclonedx merge --input-files "${BOMS[@]}" \
+            --output-format json \
+            --output-file "ravn-${{ steps.meta.outputs.tag }}.cdx.json"
+
+      - name: Generate SPDX SBOM (Syft)
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: ravn-${{ steps.meta.outputs.tag }}.spdx.json
+          upload-artifact: false # uploaded together with the CycloneDX below
+
+      - name: Checksums
+        shell: bash
+        run: sha256sum ravn-*.cdx.json ravn-*.spdx.json > "ravn-${{ steps.meta.outputs.tag }}.sbom.sha256"
+
+      - name: Upload SBOMs as workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ steps.meta.outputs.tag }}
+          path: |
+            ravn-*.cdx.json
+            ravn-*.spdx.json
+            ravn-*.sbom.sha256
+          if-no-files-found: error
+
+      - name: Attach SBOMs to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          files: |
+            ravn-*.cdx.json
+            ravn-*.spdx.json
+            ravn-*.sbom.sha256
+          fail_on_unmatched_files: true
