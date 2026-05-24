@@ -21,6 +21,11 @@ path = "src/bin/trajectory-export.rs"
 name = "curator"
 path = "src/bin/curator.rs"
 
+[[bin]]
+# Phase 6.4: promote a candidate skill only on a pass-rate improvement.
+name = "verify-candidate"
+path = "src/bin/verify-candidate.rs"
+
 [dependencies]
 ravn-core.workspace = true
 ravn-llm.workspace = true

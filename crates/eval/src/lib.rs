@@ -12,10 +12,15 @@ pub mod curator;
 pub mod judge;
 pub mod reward;
 pub mod runner;
+pub mod synthesis;
 pub mod task;
 
 pub use curator::{mine, render_skill_md, CuratorConfig, SkillCandidate};
 pub use judge::{Judge, Judgement};
+pub use synthesis::{
+    decide, promote, verify_and_promote, verify_with_rates, Decision, PassRateMeasurer,
+    VerificationReport,
+};
 pub use reward::{
     score, score_and_record, FileMatches, GitCommitted, Match, RewardOutcome, TestsPass, Verifier,
 };
@@ -32,6 +37,8 @@ pub enum Error {
     Agent(String),
     #[error("judge: {0}")]
     Judge(String),
+    #[error("synthesis: {0}")]
+    Synthesis(String),
     #[error("persistence: {0}")]
     Persistence(#[from] ravn_persistence::Error),
 }

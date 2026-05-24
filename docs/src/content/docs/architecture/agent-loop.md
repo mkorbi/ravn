@@ -169,3 +169,13 @@ sequences and writes each as a SKILL.md *candidate* under
 cargo run -p ravn-eval --bin curator -- --min-support 2 --min-reward 1.0
 # --dry-run to list without writing; raise --min-reward to mine only successes
 ```
+
+A candidate is promoted into the live skills set only if it doesn't
+regress the historical pass-rate (Phase 6.4). Measure the eval set
+without, then with, the candidate, and gate the move:
+
+```bash
+cargo run -p ravn-eval --bin verify-candidate -- \
+  --name auto-web-fetch-then-file-write --baseline 0.62 --candidate 0.71
+# atomically moves the candidate into ~/.ravn/skills only on a pass-rate gain
+```
