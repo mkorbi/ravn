@@ -13,6 +13,7 @@ pub mod events;
 pub mod messages;
 pub mod sessions;
 pub mod skills;
+pub mod trajectory;
 pub mod vector;
 pub mod world;
 
@@ -20,6 +21,7 @@ pub use db::{now_millis, Db};
 pub use error::Error;
 pub use messages::MessageRow;
 pub use sessions::{Session, UsageDelta};
+pub use trajectory::{Action, Observation, TrajectoryStep, STEP_EVENT_KIND};
 pub use world::WorldState;
 
 #[cfg(test)]

@@ -10,7 +10,7 @@
 //! tokens as they arrive. Tool-use blocks are buffered and dispatched
 //! at the end of the assistant turn.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use futures::StreamExt;
@@ -19,7 +19,7 @@ use ravn_llm::{
     ContentBlock, LlmProvider, Message, PromptBuilder, Role, StreamChunk, Usage,
 };
 use ravn_memory::SemanticMemory;
-use ravn_persistence::{events, messages, vector, Db};
+use ravn_persistence::{events, messages, trajectory, vector, Db};
 use ravn_tools::{ApprovalDecision, Approver, ToolContext, ToolRegistry};
 use tokio_util::sync::CancellationToken;
 
@@ -262,6 +262,23 @@ impl Agent {
             if tool_uses.is_empty() {
                 let final_text = text_chunks.join("");
                 emit(&sink, LoopEvent::Done).await;
+                // Terminal step: a thought (the final answer), no action/observation.
+                let _ = events::append_json(
+                    &self.db,
+                    Some(&ctx.trace_id),
+                    Some(&ctx.session_id),
+                    trajectory::STEP_EVENT_KIND,
+                    &trajectory::TrajectoryStep {
+                        trace_id: String::new(),
+                        step: budget.usage.steps,
+                        mode: Some(format!("{current_mode:?}")),
+                        thought: final_text.clone(),
+                        action: Vec::new(),
+                        observation: Vec::new(),
+                        reward: None,
+                    },
+                )
+                .await;
                 let _ = events::append_json(
                     &self.db,
                     Some(&ctx.trace_id),
@@ -280,6 +297,21 @@ impl Agent {
                     history,
                 });
             }
+
+            // Capture the step's thought + actions before the loop consumes
+            // `tool_uses` — emitted as a `react.step` trajectory record below.
+            let step_thought = text_chunks.join("");
+            let step_actions: Vec<trajectory::Action> = tool_uses
+                .iter()
+                .map(|(_, name, input)| trajectory::Action {
+                    tool: name.clone(),
+                    input: input.clone(),
+                })
+                .collect();
+            let tool_use_names: HashMap<String, String> = tool_uses
+                .iter()
+                .map(|(id, name, _)| (id.clone(), name.clone()))
+                .collect();
 
             // Execute each tool, accumulate results as the next user turn.
             let mut tool_results = Vec::new();
@@ -392,6 +424,42 @@ impl Agent {
                     trustworthy: output.trustworthy,
                 });
             }
+
+            // Log this iteration as a trajectory step (thought → action →
+            // observation). The full observation is also in `messages`; here we
+            // cap each to keep trajectory events bounded.
+            let step_observations: Vec<trajectory::Observation> = tool_results
+                .iter()
+                .filter_map(|b| match b {
+                    ContentBlock::ToolResult {
+                        tool_use_id,
+                        content,
+                        is_error,
+                        ..
+                    } => Some(trajectory::Observation {
+                        tool: tool_use_names.get(tool_use_id).cloned().unwrap_or_default(),
+                        content: truncate_observation(content),
+                        is_error: *is_error,
+                    }),
+                    _ => None,
+                })
+                .collect();
+            let _ = events::append_json(
+                &self.db,
+                Some(&ctx.trace_id),
+                Some(&ctx.session_id),
+                trajectory::STEP_EVENT_KIND,
+                &trajectory::TrajectoryStep {
+                    trace_id: String::new(),
+                    step: budget.usage.steps,
+                    mode: Some(format!("{current_mode:?}")),
+                    thought: step_thought,
+                    action: step_actions,
+                    observation: step_observations,
+                    reward: None,
+                },
+            )
+            .await;
 
             // Router signals for the *next* iteration:
             // - any tool returning is_error makes the next step Reflect
@@ -596,6 +664,24 @@ fn finalize_tool(t: ToolBuf) -> ContentBlock {
 
 /// `true` if any tool-result block in the slice signaled an error.
 /// Used by the router to switch to [`Mode::Reflect`] on the next step.
+/// Cap a single observation's stored length so a huge tool output can't bloat
+/// the trajectory events table (the untruncated result is still in `messages`).
+const MAX_OBSERVATION_CHARS: usize = 16 * 1024;
+
+fn truncate_observation(s: &str) -> String {
+    if s.len() <= MAX_OBSERVATION_CHARS {
+        return s.to_string();
+    }
+    // Truncate on a UTF-8 boundary at/under the cap.
+    let end = s
+        .char_indices()
+        .take_while(|(i, _)| *i < MAX_OBSERVATION_CHARS)
+        .last()
+        .map(|(i, c)| i + c.len_utf8())
+        .unwrap_or(0);
+    format!("{}…[truncated]", &s[..end])
+}
+
 fn next_input_has_tool_error(blocks: &[ContentBlock]) -> bool {
     blocks
         .iter()

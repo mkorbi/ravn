@@ -13,6 +13,7 @@ use rmcp::model::{
 use rmcp::service::RequestContext;
 use rmcp::RoleServer;
 
+#[derive(Clone)]
 pub struct RavnServer {
     pub registry: Arc<ToolRegistry>,
     pub db: Db,

@@ -11,6 +11,26 @@ repository.workspace = true
 name = "ravn-eval"
 path = "src/bin/ravn-eval.rs"
 
+[[bin]]
+# Phase 6.1: export logged ReAct trajectories as JSONL for RL tooling.
+name = "trajectory-export"
+path = "src/bin/trajectory-export.rs"
+
+[[bin]]
+# Phase 6.3: mine trajectories into SKILL.md candidates.
+name = "curator"
+path = "src/bin/curator.rs"
+
+[[bin]]
+# Phase 6.4: promote a candidate skill only on a pass-rate improvement.
+name = "verify-candidate"
+path = "src/bin/verify-candidate.rs"
+
+[[bin]]
+# Phase 6.9: constitutional self-audit of recent sessions → memory.md.
+name = "auditor"
+path = "src/bin/auditor.rs"
+
 [dependencies]
 ravn-core.workspace = true
 ravn-llm.workspace = true
@@ -30,6 +50,9 @@ tracing-subscriber.workspace = true
 uuid.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
+dirs = "5"
 
 [dev-dependencies]
 tempfile = "3"
+# Cross-validate that curator-rendered SKILL.md candidates actually parse.
+ravn-skills.workspace = true

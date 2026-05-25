@@ -259,6 +259,87 @@ async fn read_tool_call_then_text() {
 }
 
 #[tokio::test]
+async fn trajectory_steps_are_logged() {
+    use ravn_persistence::trajectory::{export_jsonl, Filter, TrajectoryStep};
+
+    let mut tools = ToolRegistry::new();
+    tools.register(AddTool);
+    let scripts = vec![
+        vec![
+            StreamChunk::ToolUseStart {
+                id: "toolu_1".into(),
+                name: "add".into(),
+            },
+            StreamChunk::ToolUseDelta {
+                partial_json: r#"{"a":2,"b":3}"#.into(),
+            },
+            StreamChunk::ToolUseEnd,
+            StreamChunk::Done {
+                finish_reason: FinishReason::ToolUse,
+            },
+        ],
+        vec![
+            StreamChunk::TextDelta("the sum is 5".into()),
+            StreamChunk::Done {
+                finish_reason: FinishReason::Stop,
+            },
+        ],
+    ];
+
+    // Build inline (not via `harness`) so we keep the db handle to read back
+    // the logged trajectory.
+    let db = Db::open_in_memory().await.unwrap();
+    ravn_persistence::sessions::create(&db, "sess-1", "test", Some("mock"))
+        .await
+        .unwrap();
+    let provider = Arc::new(MockProvider::new(scripts));
+    let agent = Agent::new(provider, Arc::new(tools), Arc::new(AllowAll), db.clone());
+    let cfg = AgentConfig {
+        budget: Budget {
+            max_steps: 5,
+            ..Budget::default()
+        },
+        ..AgentConfig::new("mock-model")
+    };
+    let ctx = RunContext {
+        session_id: "sess-1".into(),
+        trace_id: "trace-xyz".into(),
+        semantic: SemanticMemory::default(),
+        history: Vec::new(),
+        user_turn: Message::user("add 2 and 3"),
+    };
+    let (tx, _rx) = mpsc::channel(64);
+    let sink = Arc::new(ChannelSink::new(tx));
+
+    agent
+        .run(&cfg, ctx, sink, CancellationToken::new())
+        .await
+        .unwrap();
+
+    let jsonl = export_jsonl(&db, &Filter::default()).await.unwrap();
+    let steps: Vec<TrajectoryStep> = jsonl
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(steps.len(), 2, "one tool step + one terminal step");
+
+    // Step 1: action + observation from the tool call.
+    assert_eq!(steps[0].trace_id, "trace-xyz");
+    assert_eq!(steps[0].step, 1);
+    assert_eq!(steps[0].action[0].tool, "add");
+    assert_eq!(steps[0].observation[0].tool, "add");
+    assert_eq!(steps[0].observation[0].content, "5");
+    assert!(!steps[0].observation[0].is_error);
+
+    // Step 2: terminal — final answer as thought, no action/observation, no reward.
+    assert_eq!(steps[1].step, 2);
+    assert_eq!(steps[1].thought, "the sum is 5");
+    assert!(steps[1].action.is_empty());
+    assert!(steps[1].observation.is_empty());
+    assert!(steps[1].reward.is_none());
+}
+
+#[tokio::test]
 async fn write_tool_denied_by_approver() {
     let mut tools = ToolRegistry::new();
     tools.register(WriteFileTool);

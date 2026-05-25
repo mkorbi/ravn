@@ -16,14 +16,70 @@ use serde::Deserialize;
 pub struct ExposeConfig {
     #[serde(default = "default_expose")]
     pub expose: Vec<String>,
+    /// stdio transport (Phase 5.1) — on by default for Claude-Desktop-style
+    /// subprocess use.
+    #[serde(default)]
+    pub stdio: StdioConfig,
+    /// Streamable HTTP transport (Phase 5.1) + auth (Phase 5.3) — off by default.
+    #[serde(default)]
+    pub http: HttpConfig,
 }
 
 impl Default for ExposeConfig {
     fn default() -> Self {
         Self {
             expose: default_expose(),
+            stdio: StdioConfig::default(),
+            http: HttpConfig::default(),
         }
     }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StdioConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+impl Default for StdioConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+/// HTTP transport + auth settings. Auth checks are skipped when their field is
+/// empty, so a loopback bind with no token works out of the box.
+#[derive(Debug, Clone, Deserialize)]
+pub struct HttpConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_bind")]
+    pub bind: String,
+    /// Phase 5.3: require `Authorization: Bearer <token>` when non-empty.
+    #[serde(default)]
+    pub bearer_token: String,
+    /// Phase 5.3: restrict to these peer IPs when non-empty.
+    #[serde(default)]
+    pub ip_allowlist: Vec<String>,
+}
+
+impl Default for HttpConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bind: default_bind(),
+            bearer_token: String::new(),
+            ip_allowlist: Vec::new(),
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_bind() -> String {
+    "127.0.0.1:8787".to_string()
 }
 
 fn default_expose() -> Vec<String> {

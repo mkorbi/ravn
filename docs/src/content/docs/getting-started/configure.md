@@ -124,6 +124,29 @@ Wire it into Claude Desktop (`claude_desktop_config.json`):
 It reads the same `state.db` as the TUI (so session-search returns your real
 history) and logs to **stderr** — stdout carries the JSON-RPC stream.
 
+### HTTP transport + auth
+
+stdio is the default. For a **networked** endpoint, enable `[http]` — it serves
+the same read-only tools as Streamable HTTP at `/mcp`, gated by an optional
+Bearer token + IP allowlist (both checks skipped when empty):
+
+```toml
+expose = ["session_search", "skill_list", "skill_view", "datetime"]
+
+[stdio]
+enabled = true            # default; turn off for an HTTP-only server
+
+[http]
+enabled = true
+bind = "127.0.0.1:8787"   # served at /mcp
+bearer_token = "…"        # require Authorization: Bearer …  (empty = off)
+ip_allowlist = ["127.0.0.1"]   # permitted peer IPs (empty = any)
+```
+
+The inbound `Host` is restricted to loopback by default (DNS-rebinding
+defense); a non-loopback bind relaxes that, and the server warns if you expose
+one with no auth. The read-only tool filter applies over HTTP too.
+
 ## A2A — Agent-to-Agent (`~/.ravn/a2a.toml`)
 
 Beyond exposing *tools* over MCP, ravn can expose its whole **agent** over the
@@ -236,6 +259,17 @@ happens.
 
 The `memory_save` tool (write-permission) writes into these files
 under a `## <section>` heading, defaulting to today's date.
+
+### Self-audit (`~/.ravn/constitution.md`)
+
+Write rules ravn should hold itself to (privacy, tone, safety). The
+`auditor` job reviews recent sessions against them with an LLM and appends
+concrete findings to `memory.md`, so reviews carry forward (Phase 6.9):
+
+```bash
+cargo run -p ravn-eval --bin auditor -- --limit 100   # needs an LLM key
+# --dry-run prints findings without writing; schedule it via a heartbeat
+```
 
 ## World state
 
