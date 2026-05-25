@@ -16,8 +16,15 @@ ravn-tools.workspace = true
 ravn-persistence.workspace = true
 ravn-embeddings.workspace = true
 
-# rmcp is a client elsewhere; here we use its server side over stdio.
-rmcp = { workspace = true, features = ["server", "transport-io"] }
+# rmcp is a client elsewhere; here we use its server side over stdio (5.1) and
+# Streamable HTTP (5.1 HTTP transport, axum-mounted; 5.3 auth in front).
+rmcp = { workspace = true, features = [
+    "server",
+    "transport-io",
+    "server-side-http",
+    "transport-streamable-http-server",
+] }
+axum.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true

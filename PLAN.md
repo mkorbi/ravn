@@ -333,9 +333,9 @@ Phase 1 ist abgenommen wenn:
 **Abhängigkeit**: Phase 4 abgeschlossen.
 
 ### Tasks
-- [x] **5.1** `bin/agent-mcp`: `rmcp`-Server-Mode mit stdio+HTTP-Transport. → `crates/mcp-server` (`agent-mcp` bin), **stdio** fertig; HTTP-Transport verschoben (mit 5.3 Auth).
-- [x] **5.2** Selektive Tool-Exposure (config-driven, default deny). → `~/.ravn/mcp-server.toml` `expose=[…]`; nur `Read`-Tools (Write/Exec gefiltert).
-- [ ] **5.3** Auth für MCP-Server (Bearer-Token, IP-Allowlist).
+- [x] **5.1** `bin/agent-mcp`: `rmcp`-Server-Mode mit stdio+HTTP-Transport. → `crates/mcp-server` (`agent-mcp` bin): **stdio** (default) + **Streamable HTTP** (`StreamableHttpService` an axum `/mcp`); beide per `mcp-server.toml` (`[stdio]`/`[http]`) schaltbar; Logging auf stderr.
+- [x] **5.2** Selektive Tool-Exposure (config-driven, default deny). → `~/.ravn/mcp-server.toml` `expose=[…]`; nur `Read`-Tools (Write/Exec gefiltert — gilt auch über HTTP).
+- [x] **5.3** Auth für MCP-Server (Bearer-Token, IP-Allowlist). → `auth::require_auth` axum-Middleware vor `/mcp` (nur HTTP): IP-Allowlist (`ConnectInfo<SocketAddr>`) + konstant-zeitiger Bearer-Vergleich, beide leer = aus. Per-Bind rmcp-`Host`-Policy (Loopback default, `0.0.0.0` → disabled); Warnung bei non-loopback-Bind ohne Auth.
 - [x] **5.4** A2A-Endpoint: Agent Card (JSON), `/tasks`/`/messages`/`/artifacts` via JSON-RPC 2.0 über HTTPS. → `crates/a2a` (`a2a-serve`), Agent Card + `message/send` + `message/stream` (SSE) + `tasks/get|cancel`; HTTP (HTTPS via Reverse-Proxy).
 - [x] **5.5** A2A-Authentication (OAuth2/OIDC). → optionaler `[auth]`-Block, JWT-Validierung gegen JWKS (issuer/audience/expiry/scopes) via `jsonwebtoken`.
 - [ ] **5.6** Multimodal-Input: `MultiModalMessage`-Enum (`Text|Image|Audio`), Image-OCR via Vision-Model.
